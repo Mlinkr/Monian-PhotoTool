@@ -236,7 +236,10 @@ progress::-webkit-progress-val{background:var(--accent)}
   <div class="card-hd"><span class="step">04</span><h2>重命名规则</h2></div>
   <div class="card-bd">
     <div class="fldgrp"><label class="fld">名称模板（各组自动预填组名，可随时修改）</label>
-      <input type="text" id="tpl" placeholder="如：【20261028】张艺兴" oninput="onTpl()"></div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="tpl" placeholder="如：【{日期}】张艺兴" oninput="onTpl()" style="flex:1">
+        <button class="btn" type="button" onclick="insertDate()" style="flex:none;white-space:nowrap">📅 今日日期</button>
+      </div></div>
     <div class="row">
       <div class="fldgrp"><label class="fld">序号起始</label><input type="number" id="start" value="1" oninput="refreshAll()"></div>
       <div class="fldgrp"><label class="fld">序号位数（补0）</label><input type="number" id="pad" value="0" min="0" max="6" oninput="refreshAll()"></div>
@@ -385,14 +388,22 @@ function updateBadges(){
 }
 
 /* ============ 组名去重：仅重复时加序号 ============ */
+function todayStr(){
+  const d=new Date();
+  return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+}
+function expandName(n){
+  return String(n||'').replace(/\{日期\}|\{date\}|\{today\}/gi,todayStr());
+}
 function displayNames(){
-  const names=GROUPS.map(g=>(g.name||'').trim()||'未命名');
+  const names=GROUPS.map(g=>expandName((g.name||'').trim())||'未命名');
   const count={};names.forEach(n=>count[n]=(count[n]||0)+1);
   const seq={};
   return names.map(n=>{
     if(count[n]<=1)return n;
     seq[n]=(seq[n]||0)+1;
-    return `${n}${seq[n]}`;   // 分组1、分组2、分组3 …（重名时全部从1开始）
+    // 名称以数字结尾时序号用 - 连接，避免 20261028→202610281 的歧义
+    return /[0-9}]$/.test(n)?`${n}-${seq[n]}`:`${n}${seq[n]}`;   // 分组1 / 20261028-1
   });
 }
 
@@ -407,7 +418,7 @@ function newFileName(gi,li){
   return sep?`${tpl}${sep}${padNum(num,pad)}`:`${tpl}${padNum(num,pad)}`;
 }
 function allZipName(){
-  const n=(GROUPS[0].name||'').trim()||'Monian';
+  const n=expandName((GROUPS[0]&&GROUPS[0].name)||'')||'Monian';
   return `${n}-合集${GROUPS.length>1?('共'+GROUPS.length+'组'):''}.zip`;
 }
 function zipName(gi){
@@ -437,7 +448,7 @@ function renderGroups(){
     d.innerHTML=`
     <div class="group-h"><span class="dot" style="background:${g.color}"></span><b>第 ${gi+1} 组</b>${dupTag?`<span style="font-size:11px;color:var(--dim-2)">${dupTag}</span>`:''}<span class="cnt">${g.items.length} 张</span></div>
     <div class="group-b">
-      <div class="fldgrp"><label class="fld">分组命名</label>
+      <div class="fldgrp"><label class="fld">分组命名（{日期} 会自动替换为今日，如 20261028）</label>
         <input type="text" value="${esc(g.name)}" onchange="GROUPS[${gi}].name=this.value;refreshAll()"></div>
       <div class="zname">📦 打包名：<b>${esc($('zmode').value==='merged'?allZipName():zipName(gi)+'.zip')}</b>${$('zmode').value==='merged'?`<span style="color:var(--dim-2)">（总包内子文件夹：${esc(zipName(gi))}）</span>`:''}</div>
       <div class="list">${rows}</div>
@@ -453,6 +464,13 @@ function extOf(im){
   const m=im.name.match(/\.[a-z0-9]+$/i);
   return m?m[0].toLowerCase():'.jpg';
 }
+function insertDate(){
+  const t=$('tpl');
+  if(!t.value.includes('{日期}'))t.value='{日期}'+t.value.trim();
+  onTpl();
+  toast('已插入 {日期}，实际名称中会显示为 '+todayStr());
+}
+window.addEventListener('DOMContentLoaded',()=>{if(!$('tpl').value.trim())$('tpl').value='{日期}';});
 function onTpl(){
   const v=$('tpl').value.trim();
   if(GROUPS.length){GROUPS.forEach(g=>g.name=v);renderGroups();}
@@ -516,9 +534,19 @@ async function resizeImage(im){
   const c=document.createElement('canvas');c.width=dw;c.height=dh;
   c.getContext('2d').drawImage(bmp,0,0,dw,dh);
   let type=$('fmt').value;
-  if(type==='keep'){type=im.file.type||'image/jpeg';if(type==='image/webp')type='image/jpeg';}
+  if(type==='keep'){type=im.file.type||'image/jpeg';if(!type.startsWith('image/')||type==='image/webp'||type==='image/gif')type='image/jpeg';}
   const q=(+$('q').value||90)/100;
-  const blob=await new Promise(r2=>c.toBlob(r2,type==='image/png'?undefined:type,q));
+  let blob=await new Promise(r2=>c.toBlob(r2,type==='image/png'?undefined:type,q));
+  if(!blob){
+    /* iOS Safari 内存紧张时 toBlob 可能返回 null，改用 toDataURL 兜底 */
+    try{
+      const durl=c.toDataURL(type==='image/png'?'image/png':'image/jpeg',q);
+      const bin=atob(durl.split(',')[1]);const u8=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+      blob=new Blob([u8],{type:type==='image/png'?'image/png':'image/jpeg'});
+    }catch(e){}
+  }
+  if(!blob)throw new Error('图片编码失败（设备内存不足），请减少单次处理数量或降低质量后重试');
   return {blob,ext:type==='image/png'?'.png':'.jpg'};
 }
 function log(m){const l=$('log');l.innerHTML+=m+'<br>';l.scrollTop=l.scrollHeight;}
@@ -539,6 +567,7 @@ async function buildGroupInto(zip,gi,cache,total,st){
     let fname=newFileName(gi,li)+(it.ext||extOf(IMGS[idx]));
     let k=2;while(used[fname])fname=fname.replace(/(\.[a-z0-9]+)?$/i,m=>`(${k++})${m}`);
     used[fname]=1;
+    if(!it.blob)throw new Error('图片「'+IMGS[idx].name+'」处理结果为空，请重试或降低质量');
     root.file(fname,it.blob);
   }
 }
@@ -573,7 +602,12 @@ async function exportAll(){
     }
     $('pg').value=100;
     toast('全部完成 🎉',3000);
-  }catch(err){console.error(err);log('❌ 出错：'+err.message);toast('处理出错：'+err.message,5000);}
+  }catch(err){
+    console.error(err);
+    const detail=err&&err.stack?err.stack.split('\n').slice(0,2).join(' '):(err&&err.message)||String(err);
+    log('❌ 出错['+(err&&err.constructor?err.constructor.name:'Unknown')+']：'+detail);
+    toast('处理出错：'+((err&&err.message)||String(err)),6000);
+  }
   $('goBtn').disabled=false;
 }
 function saveBlob(blob,name){
