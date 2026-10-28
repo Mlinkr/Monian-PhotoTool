@@ -527,7 +527,15 @@ async function loadImage(file){
     }catch(e){}
     await new Promise(r=>setTimeout(r,delays[attempt]));
   }
-  throw new Error('无法解码图片「'+(file.name||'')+'」（设备内存不足），建议关闭其他标签页后重试，或减少单次处理数量');
+  /* 路径3：复制一份全新 Blob 再试（绕开 iOS 对文件句柄的异常缓存状态） */
+  try{
+    const buf=await file.arrayBuffer();
+    const fresh=new Blob([buf],{type:file.type||'image/jpeg'});
+    if(window.createImageBitmap){try{return await createImageBitmap(fresh);}catch(e){}}
+    const img=await decodeViaImg(fresh);
+    if(img.width||img.naturalWidth)return img;
+  }catch(e){}
+  throw new Error('skip');
 }
 /* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
 async function resizeImage(im){
@@ -569,7 +577,10 @@ async function buildGroupInto(zip,gi,cache,total,st){
     const idx=g.items[li];
     if(cache[idx]===undefined){
       try{cache[idx]=await resizeImage(IMGS[idx]);}
-      catch(err){throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);}
+      catch(err){
+        if(err&&err.message==='skip'){st.skip++;log('　⚠️ 已跳过「'+IMGS[idx].name+'」（无法解码，不影响其他图片）');st.done++;continue;}
+        throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);
+      }
       st.done++;$('pg').value=st.done/st.total*90;   // 留10%给压缩
     }
     const it=cache[idx];
@@ -585,7 +596,7 @@ async function exportAll(){
   if(!GROUPS.length){toast('请先生成分组');return;}
   $('goBtn').disabled=true;
   $('progressWrap').style.display='block';$('log').innerHTML='';
-  const st={done:0,total:IMGS.length};
+  const st={done:0,total:IMGS.length,skip:0};
   const cache={};
   try{
     if($('zmode').value==='merged'){
@@ -610,7 +621,7 @@ async function exportAll(){
       }
     }
     $('pg').value=100;
-    toast('全部完成 🎉',3000);
+    toast(st.skip?('完成，但有 '+st.skip+' 张无法解码已跳过 ⚠️'):'全部完成 🎉',st.skip?5000:3000);
   }catch(err){
     console.error(err);
     const frame=err&&err.stack?err.stack.split('\n').find(l=>/@@|@|:/.test(l))||'':'';
