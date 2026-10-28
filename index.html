@@ -102,8 +102,8 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
   background:var(--card-2);position:relative}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;
   padding:10px;max-height:300px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
-@media(min-width:768px){.grid{grid-template-columns:repeat(auto-fill,minmax(106px,1fr))}}
-.thumb{position:relative;border-radius:8px;overflow:hidden;background:#e8e5df;aspect-ratio:1;cursor:grab;user-select:none}
+@media(min-width:768px){.grid{grid-template-columns:repeat(auto-fill,minmax(106px,1fr))}.thumb{height:120px}}
+.thumb{position:relative;border-radius:8px;overflow:hidden;background:#e8e5df;height:96px;cursor:grab;user-select:none}
 .thumb img{width:100%;height:100%;object-fit:cover;pointer-events:none}
 .thumb .idx{position:absolute;top:3px;left:3px;background:rgba(28,25,20,.65);color:#f7f1e6;
   font-size:10px;padding:1px 5px;border-radius:5px;font-family:ui-monospace,Menlo,monospace}
@@ -289,6 +289,10 @@ progress::-webkit-progress-val{background:var(--accent)}
         <select id="zsub"><option value="yes">同名文件夹套图片</option><option value="no">图片直接放根目录</option></select>
       </div>
     </div>
+    <p class="hint"><label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+      <input type="checkbox" id="znested" style="width:16px;height:16px;accent-color:var(--accent)">
+      总包内每组先各自压缩成子压缩包（解压总包后直接得到各组的 ZIP，而不是文件夹）
+    </label></p>
     <p class="hint">打包名 = 组名 + 序号范围 + P，例：【20261028】张艺兴1-9P.zip。默认「合并为一个压缩包」：所有分组打进同一个 ZIP（各组为包内独立文件夹），只需保存一次，iPhone/安卓/电脑都只弹一次下载。<br>RAR 为专有格式浏览器无法生成，ZIP 全设备通用，效果等同。</p>
     <div id="progressWrap">
       <progress id="pg" value="0" max="100"></progress>
@@ -319,11 +323,11 @@ document.querySelectorAll('.card>.card-hd').forEach((hd,i)=>{
 });
 /* ============ 设置记忆（localStorage，清空按钮会一并清除） ============ */
 const SET_KEY='monian-pt-settings-v1', NAME_KEY='monian-pt-names-v1';
-const SET_IDS=['cw','ch','fmt','q','upscale','gsize','tpl','start','pad','scope','sep','zmode','zsub'];
+const SET_IDS=['cw','ch','fmt','q','upscale','gsize','tpl','start','pad','scope','sep','zmode','zsub','znested'];
 function saveSettings(){
   try{
     const o={resizeMode:resMode()};
-    SET_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;});
+    SET_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.type==='checkbox'?el.checked:el.value;});
     localStorage.setItem(SET_KEY,JSON.stringify(o));
   }catch(e){}
 }
@@ -334,7 +338,7 @@ function restoreSettings(){
   try{
     const o=JSON.parse(localStorage.getItem(SET_KEY)||'null');
     if(!o)return;
-    SET_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!==undefined)el.value=o[id];});
+    SET_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!==undefined){if(el.type==='checkbox')el.checked=!!o[id];else el.value=o[id];}});
     if(o.resizeMode&&o.resizeMode!=='off'){
       const b=document.querySelector('#segResize button[data-v="'+o.resizeMode+'"]');
       if(b){[...$('segResize').children].forEach(x=>x.classList.remove('on'));b.classList.add('on');}
@@ -393,7 +397,7 @@ function clearAll(){
   rebuild();
   $('cw').value=1280;$('ch').value=720;$('fmt').value='keep';$('q').value=90;$('upscale').value='no';
   $('gsize').value='';$('tpl').value='';$('start').value=1;$('pad').value=0;$('scope').value='group';$('sep').value='-';
-  $('zmode').value='merged';$('zsub').value='yes';
+  $('zmode').value='merged';$('zsub').value='yes';$('znested').checked=false;
   resizeMode='off';
   document.querySelectorAll('#segResize button').forEach(x=>x.classList.toggle('on',x.dataset.v==='off'));
   $('customRow').hidden=true;$('sizeBadge').textContent='不调整';
@@ -665,6 +669,12 @@ async function resizeImage(im){
 }
 function log(m){const l=$('log');l.innerHTML+=m+'<br>';l.scrollTop=l.scrollHeight;}
 
+/* 把第 gi 组打成一个独立 ZIP，返回 blob（用于嵌套总包模式） */
+async function buildGroupZip(gi,cache,st){
+  const inner=new JSZip();
+  await buildGroupInto(inner,gi,cache,null,st);
+  return await inner.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+}
 async function buildGroupInto(zip,gi,cache,total,st){
   const g=GROUPS[gi],names=displayNames();
   log(`▸ 第 ${gi+1} 组「${names[gi]}」(${g.items.length} 张) 处理中…`);
@@ -699,8 +709,18 @@ async function exportAll(){
     if($('zmode').value==='merged'){
       /* 合并模式：一个大包，各组为子文件夹，一次下载 */
       const zip=new JSZip();
+      const nested=$('znested').checked;
       if(IMGS.length>200)log('　💡 图片超过200张：合并大包较吃内存，若失败请改用「每组单独下载」模式');
-      for(let gi=0;gi<GROUPS.length;gi++)await buildGroupInto(zip,gi,cache,null,st);
+      for(let gi=0;gi<GROUPS.length;gi++){
+        if(nested){
+          log(`▸ 第 ${gi+1} 组「${displayNames()[gi]}」压缩为子包…`);
+          const zb=await buildGroupZip(gi,cache,st);
+          zip.file(zipName(gi)+'.zip',zb,{compression:'STORE'});   // 子包已压缩，外层直接存储
+          st.done+=0;   // 进度已在 buildGroupZip 内推进
+        }else{
+          await buildGroupInto(zip,gi,cache,null,st);
+        }
+      }
       log(`▸ 压缩生成总包 ${allZipName()} …`);
       const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
         m=>{$('pg').value=90+m.percent*0.1;});
