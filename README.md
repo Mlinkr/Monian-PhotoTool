@@ -1,4 +1,4 @@
-# Motion-PhotoTool · 图片批量分组打包工具
+# Monian-PhotoTool · 图片批量分组打包工具
 
 移动端（含 Pad）与 PC 通用的**纯前端**图片批量处理工具：统一改尺寸 · 自定义不等量分组 · 自动重命名 · 按组压缩打包下载。
 
@@ -39,8 +39,8 @@ IMG_2032.jpg                  →  【20261028】张艺兴-2.jpg
 ## 本地运行
 
 ```bash
-git clone https://github.com/Mlinkr/Motion-PhotoTool.git
-cd Motion-PhotoTool
+git clone https://github.com/Mlinkr/Monian-PhotoTool.git
+cd Monian-PhotoTool
 # 方式一：直接双击 index.html
 # 方式二：起本地服务
 python3 -m http.server 8000
@@ -55,5 +55,5 @@ python3 -m http.server 8000
 仓库已含 `.nojekyll`，在 **Settings → Pages → Source** 选择 `main` 分支 `/ (root)` 保存即可，访问地址：
 
 ```
-https://mlinkr.github.io/Motion-PhotoTool/
+https://mlinkr.github.io/Monian-PhotoTool/
 ```
