@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>图片批量分组打包工具</title>
+<script src="jszip.min.js"></script>
+<style>
+:root{
+  --bg:#f5f6fa;--card:#fff;--primary:#2979ff;--primary-d:#1565e0;
+  --text:#222;--sub:#888;--border:#e5e7ee;--danger:#e53935;--ok:#2e9e5b;
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:15px;padding-bottom:90px}
+header{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#2979ff,#5b8dff);color:#fff;padding:14px 18px;box-shadow:0 2px 10px rgba(41,121,255,.3)}
+header h1{font-size:18px;font-weight:600}
+header p{font-size:12px;opacity:.85;margin-top:2px}
+.wrap{max-width:960px;margin:0 auto;padding:14px}
+.card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.card h2{font-size:16px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h2 .step{background:var(--primary);color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none}
+.hint{font-size:12px;color:var(--sub);margin-top:6px;line-height:1.6}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:10px;padding:10px 16px;font-size:14px;cursor:pointer;background:var(--primary);color:#fff;font-weight:500;transition:.15s}
+.btn:active{transform:scale(.96)}
+.btn.ghost{background:#eef3ff;color:var(--primary)}
+.btn.gray{background:#eceef3;color:#555}
+.btn.green{background:var(--ok)}
+.btn.danger{background:var(--danger)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.block{width:100%}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1;min-width:0}
+input[type=text],input[type=number],select,textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:14px;background:#fafbfd;outline:none;transition:.15s;font-family:inherit}
+input:focus,select:focus,textarea:focus{border-color:var(--primary);background:#fff}
+label.fld{display:block;font-size:13px;color:#555;margin-bottom:4px}
+.fldgrp{margin-bottom:10px}
+.dropzone{border:2px dashed #b9c8ee;border-radius:var(--radius);padding:26px 16px;text-align:center;color:var(--sub);background:#f6f9ff;cursor:pointer;transition:.2s}
+.dropzone.on{border-color:var(--primary);background:#eaf1ff}
+.dropzone .big{font-size:34px}
+.dropzone p{margin-top:6px;font-size:13px}
+.statline{display:flex;gap:14px;margin-top:10px;font-size:13px;color:#555;flex-wrap:wrap}
+.statline b{color:var(--primary)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;margin-top:12px}
+.thumb{position:relative;border-radius:10px;overflow:hidden;background:#e8eaf2;aspect-ratio:1;cursor:grab;user-select:none}
+.thumb img{width:100%;height:100%;object-fit:cover;pointer-events:none}
+.thumb .idx{position:absolute;top:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:1px 5px;border-radius:6px}
+.thumb .gtag{position:absolute;bottom:3px;right:3px;font-size:10px;padding:1px 5px;border-radius:6px;background:var(--primary);color:#fff}
+.thumb.dragging{opacity:.4}
+.thumb.over{outline:2px solid var(--primary)}
+.thumb .mv{position:absolute;bottom:3px;left:3px;display:flex;gap:2px}
+.thumb .mv button{border:none;background:rgba(0,0,0,.55);color:#fff;font-size:11px;width:20px;height:18px;border-radius:5px;cursor:pointer}
+.gcolors .gtag{color:#fff}
+.group{border:1.5px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.group-h{background:#f4f7ff;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.group-h .dot{width:12px;height:12px;border-radius:50%;flex:none}
+.group-h b{font-size:14px}
+.group-h .cnt{font-size:12px;color:var(--sub);margin-left:auto}
+.group-b{padding:12px}
+.pz{font-size:13px;background:#fffbe8;border:1px solid #f0e6b0;border-radius:8px;padding:8px 10px;margin-top:8px;word-break:break-all;line-height:1.6}
+.seg{display:flex;background:#eef0f6;border-radius:10px;padding:3px;gap:2px}
+.seg button{flex:1;border:none;background:transparent;padding:8px 6px;border-radius:8px;font-size:13px;cursor:pointer;color:#666}
+.seg button.on{background:#fff;color:var(--primary);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.list{margin-top:8px;max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:10px}
+.list div{display:flex;gap:8px;padding:6px 10px;font-size:12px;border-bottom:1px solid #f0f1f6;align-items:center}
+.list div:last-child{border-bottom:none}
+.list .o{color:#bbb;min-width:22px}
+.list .n{color:var(--ok);font-weight:500;word-break:break-all}
+progress{width:100%;height:8px;-webkit-appearance:none;appearance:none;border-radius:5px;overflow:hidden}
+progress::-webkit-progress-bar{background:#e8eaf2}
+progress::-webkit-progress-val{background:var(--primary)}
+#progressWrap{display:none;margin-top:12px}
+#log{font-size:12px;color:var(--sub);margin-top:8px;max-height:120px;overflow:auto;line-height:1.7}
+.fabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:10px;z-index:60}
+.fabbar .btn{flex:1;padding:13px}
+.toast{position:fixed;top:14%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;z-index:99;opacity:0;transition:.25s;pointer-events:none;max-width:86%;text-align:center}
+.toast.show{opacity:1}
+@media(min-width:768px){.grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}}
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 图片批量分组打包工具</h1>
+  <p>尺寸调整 · 自定义分组 · 重命名 · 按组压缩打包（全本地处理，图片不离开设备）</p>
+</header>
+<div class="wrap">
+
+<!-- 1 上传 -->
+<div class="card">
+  <h2><span class="step">1</span>上传图片 / 文件夹</h2>
+  <div class="row">
+    <button class="btn ghost" onclick="pick('files')">🖼 选择图片</button>
+    <button class="btn ghost" onclick="pick('folder')">📁 选择文件夹</button>
+    <button class="btn gray" onclick="clearAll()">清空</button>
+  </div>
+  <input type="file" id="inFiles" multiple accept="image/*" hidden>
+  <input type="file" id="inFolder" webkitdirectory hidden>
+  <div class="dropzone" id="dz" style="margin-top:12px">
+    <div class="big">⬆️</div>
+    <p>拖拽图片 / 文件夹到此处（按文件名自动排序）</p>
+  </div>
+  <div class="statline" id="stat"></div>
+  <div class="grid" id="grid"></div>
+  <p class="hint">💡 长按/拖动缩略图可手动调整顺序（按内容分组时先在这里排好序）；手机端可用缩略图上的 ◀ ▶ 微调。</p>
+</div>
+
+<!-- 2 尺寸 -->
+<div class="card">
+  <h2><span class="step">2</span>统一尺寸调整（对所有图片生效）</h2>
+  <div class="seg" id="segResize">
+    <button data-v="off" class="on">不调整</button>
+    <button data-v="1280x720">1280×720</button>
+    <button data-v="960x540">960×540</button>
+    <button data-v="custom">自定义</button>
+  </div>
+  <div class="row" id="customRow" style="display:none;margin-top:10px">
+    <div class="fldgrp"><label class="fld">宽 (px)</label><input type="number" id="cw" value="1280"></div>
+    <div class="fldgrp"><label class="fld">高 (px)</label><input type="number" id="ch" value="720"></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="fldgrp"><label class="fld">裁剪方式</label>
+      <select id="fit"><option value="cover">填满裁切（16:9 满幅）</option><option value="contain">留白补边</option><option value="stretch">拉伸变形（不推荐）</option></select>
+    </div>
+    <div class="fldgrp"><label class="fld">输出格式</label>
+      <select id="fmt"><option value="image/jpeg">JPG</option><option value="image/png">PNG</option><option value="keep">保持原格式</option></select>
+    </div>
+    <div class="fldgrp"><label class="fld">JPG 质量</label><input type="number" id="q" value="90" min="30" max="100"></div>
+  </div>
+  <p class="hint">背景色（留白补边时使用）：<input type="color" id="bgc" value="#000000" style="width:44px;height:28px;border:1px solid var(--border);border-radius:6px;vertical-align:middle"></p>
+</div>
+
+<!-- 3 分组 -->
+<div class="card">
+  <h2><span class="step">3</span>自定义分组</h2>
+  <div class="row">
+    <input type="text" id="gsize" placeholder="每组数量，逗号分隔，如：9,8,11,12,11" value="9,8,11,12,11">
+    <button class="btn" onclick="makeGroups()">生成分组</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button class="btn ghost" onclick="presetEven()">均分（自动算）</button>
+    <button class="btn ghost" onclick="presetOne()">整包一组</button>
+  </div>
+  <p class="hint">按数量依次切分已排序的图片，各组数量可不同。总和少于图片总数时，剩余图片自动并入最后一组。</p>
+  <div id="groups" style="margin-top:14px"></div>
+</div>
+
+<!-- 4 重命名 -->
+<div class="card">
+  <h2><span class="step">4</span>重命名规则</h2>
+  <div class="row">
+    <div class="fldgrp"><label class="fld">新名称模板（可随时修改，各组会自动预填组名）</label>
+      <input type="text" id="tpl" placeholder="如：【20261028】张艺兴" oninput="refreshAll()">
+    </div>
+  </div>
+  <div class="row">
+    <div class="fldgrp"><label class="fld">序号起始</label><input type="number" id="start" value="1" oninput="refreshAll()"></div>
+    <div class="fldgrp"><label class="fld">序号位数（补0）</label><input type="number" id="pad" value="0" min="0" max="6" oninput="refreshAll()"></div>
+    <div class="fldgrp"><label class="fld">序号范围</label>
+      <select id="scope" onchange="refreshAll()"><option value="group">仅分组内排序</option><option value="global">所有图片连续排序</option></select>
+    </div>
+    <div class="fldgrp"><label class="fld">连接符</label>
+      <select id="sep" onchange="refreshAll()"><option value="-">-</option><option value="_">_</option><option value="">无</option></select>
+    </div>
+  </div>
+  <p class="hint">新文件名 = 名称模板 - 序号。例：模板【20261028】张艺兴 + 序号1 → 【20261028】张艺兴-1</p>
+</div>
+
+<!-- 5 打包 -->
+<div class="card">
+  <h2><span class="step">5</span>按组压缩打包下载</h2>
+  <div class="row">
+    <div class="fldgrp"><label class="fld">压缩格式</label>
+      <select id="zfmt"><option value="zip">ZIP（推荐，通用）</option></select>
+    </div>
+    <div class="fldgrp"><label class="fld">包内文件夹</label>
+      <select id="zsub"><option value="yes">打包命名作为文件夹名（图片在其中）</option><option value="no">图片直接放压缩包根目录</option></select>
+    </div>
+  </div>
+  <p class="hint">打包名 = 组名 + 起始序号-结束序号 + P，例：【20261028】张艺兴1-9P.zip<br>⚠️ RAR 为专有格式，浏览器端无法生成，ZIP 可被所有设备/网盘直接打开，效果等同。</p>
+  <div id="progressWrap"><progress id="pg" value="0" max="100"></progress><div id="log"></div></div>
+  <button class="btn green block" id="goBtn" style="margin-top:12px;padding:14px" onclick="exportAll()">🚀 一键处理并打包下载全部分组</button>
+</div>
+
+</div>
+<div class="fabbar"><button class="btn block" onclick="exportAll()">🚀 一键处理打包</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 状态 ============ */
+let IMGS = []; // {file,name,bitmap?,w,h,url}
+let GROUPS = []; // {name,color,items:[idx]}
+const GCOLORS=['#2979ff','#00b8a9','#f5719c','#ff9800','#8e5df2','#43a047','#e53935','#795548'];
+const $=id=>document.getElementById(id);
+const IMG_RE=/\.(jpe?g|png|gif|bmp|webp|heic|heif|avif)$/i;
+
+function toast(m,t=2000){const el=$('toast');el.textContent=m;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),t);}
+
+/* ============ 上传 ============ */
+function pick(w){(w==='folder'?$('inFolder'):$('inFiles')).click();}
+$('inFiles').onchange=e=>addFiles(e.target.files);
+$('inFolder').onchange=e=>addFiles(e.target.files);
+const dz=$('dz');
+dz.onclick=()=>$('inFiles').click();
+['dragover','dragenter'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('on');}));
+['dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==='drop'||e.target===document.documentElement)dz.classList.remove('on');}));
+document.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
+
+function addFiles(list){
+  const arr=[...list].filter(f=>f.type.startsWith('image/')||IMG_RE.test(f.name));
+  if(!arr.length){toast('未找到图片文件');return;}
+  arr.forEach(f=>IMGS.push({file:f,name:f.name}));
+  sortByName();rebuild();toast(`已添加 ${arr.length} 张图片`);
+}
+function natComp(a,b){return a.name.localeCompare(b.name,'zh-CN',{numeric:true});}
+function sortByName(){IMGS.sort(natComp);}
+function clearAll(){IMGS=[];GROUPS=[];rebuild();}
+function totalSize(){return IMGS.reduce((s,i)=>s+i.file.size,0);}
+function fmtSize(b){return b>1048576?(b/1048576).toFixed(1)+'MB':(b/1024|0)+'KB';}
+
+function rebuild(){
+  GROUPS.forEach(g=>g.items=[]); // 清空后按顺序重排
+  renderStat();renderGrid();makeGroups(true);
+}
+function renderStat(){
+  $('stat').innerHTML=IMGS.length?`共 <b>${IMGS.length}</b> 张 · 合计 <b>${fmtSize(totalSize())}</b> <span style="color:var(--sub)">（按名称排序）</span>`:'';
+}
+
+/* ============ 缩略图网格 ============ */
+function renderGrid(){
+  const g=$('grid');g.innerHTML='';
+  IMGS.forEach((im,i)=>{
+    if(!im.url)im.url=URL.createObjectURL(im.file);
+    const d=document.createElement('div');d.className='thumb';d.draggable=true;d.dataset.i=i;
+    const gname=groupOf(i);
+    d.innerHTML=`<img src="${im.url}" loading="lazy"><span class="idx">${i+1}</span>`+(gname?`<span class="gtag" style="background:${gname.color}">${gname.tag}</span>`:'')+
+      `<span class="mv"><button onclick="moveImg(${i},-1)">◀</button><button onclick="moveImg(${i},1)">▶</button></span>`;
+    d.ondragstart=e=>{d.classList.add('dragging');e.dataTransfer.setData('text/plain',i);};
+    d.ondragend=()=>d.classList.remove('dragging');
+    d.ondragover=e=>{e.preventDefault();d.classList.add('over');};
+    d.ondragleave=()=>d.classList.remove('over');
+    d.ondrop=e=>{e.preventDefault();e.stopPropagation();d.classList.remove('over');
+      const from=+e.dataTransfer.getData('text/plain');if(from!==i){const[it]=IMGS.splice(from,1);IMGS.splice(i,0,it);rebuild();}};
+    g.appendChild(d);
+  });
+}
+function moveImg(i,dir){const j=i+dir;if(j<0||j>=IMGS.length)return;[IMGS[i],IMGS[j]]=[IMGS[j],IMGS[i]];rebuild();}
+function groupOf(idx){for(let gi=0;gi<GROUPS.length;gi++)if(GROUPS[gi].items.includes(idx))return {...GROUPS[gi],tag:gi+1};return null;}
+
+/* ============ 分组 ============ */
+function parseSizes(){
+  return $('gsize').value.split(/[,，、\s]+/).map(Number).filter(n=>n>0);
+}
+function makeGroups(silent){
+  const sizes=parseSizes();
+  if(!sizes.length){GROUPS=[];renderGroups();renderGrid();return;}
+  const total=IMGS.length;
+  if(!total){GROUPS=[];renderGroups();return;}
+  GROUPS=[];let p=0;
+  sizes.forEach((n,i)=>{
+    if(p>=total)return;
+    const take=Math.min(n,total-p);
+    const g={items:[]};for(let k=0;k<take;k++)g.items.push(p++);
+    g.color=GCOLORS[i%GCOLORS.length];
+    g.name=$('tpl').value.trim()?$('tpl').value.trim()+'-'+(i+1):`分组${i+1}`;
+    GROUPS.push(g);
+  });
+  if(p<total&&GROUPS.length){for(;p<total;p++)GROUPS[GROUPS.length-1].items.push(p);}
+  renderGroups();renderGrid();
+  if(!silent)toast(`已分成 ${GROUPS.length} 组`);
+}
+function presetEven(){if(!IMGS.length){toast('请先上传图片');return;}const n=IMGS.length;let per=Math.ceil(n/5);$('gsize').value=Array.from({length:5},()=>per).join(',');makeGroups();}
+function presetOne(){if(!IMGS.length){toast('请先上传图片');return;}$('gsize').value=String(IMGS.length);makeGroups();}
+
+/* ============ 命名 ============ */
+function padNum(n,pad){let s=String(n);while(s.length<pad)s='0'+s;return s;}
+function newFileName(gi,localIdx){
+  const g=GROUPS[gi];
+  const tpl=(g.name||`分组${gi+1}`).trim();
+  const start=+$('start').value||1;
+  const scope=$('scope').value,sep=$('sep').value,pad=+$('pad').value||0;
+  let num;
+  if(scope==='group')num=start+localIdx;
+  else{const globalIdx=g.items[localIdx];num=start+globalIdx;}
+  return sep?`${tpl}${sep}${padNum(num,pad)}`:`${tpl}${padNum(num,pad)}`;
+}
+function zipName(gi){
+  const g=GROUPS[gi];
+  const start=+$('start').value||1;
+  let s,e;
+  if($('scope').value==='group'){s=start;e=start+g.items.length-1;}
+  else{s=start+g.items[0];e=start+g.items[g.items.length-1];}
+  return `${g.name}${s}-${e}P`;
+}
+
+/* ============ 渲染分组卡片 ============ */
+function renderGroups(){
+  const box=$('groups');box.innerHTML='';
+  if(!GROUPS.length){box.innerHTML='<p class="hint">尚未生成分组。输入每组数量后点击「生成分组」。</p>';return;}
+  GROUPS.forEach((g,gi)=>{
+    const d=document.createElement('div');d.className='group';
+    let rows='';
+    g.items.forEach((idx,li)=>{
+      rows+=`<div><span class="o">${li+1}.</span><span style="color:#999">${IMGS[idx].name}</span><span style="margin-left:auto" class="n">→ ${newFileName(gi,li)}${extOf(IMGS[idx])}</span></div>`;
+    });
+    d.innerHTML=`
+    <div class="group-h"><span class="dot" style="background:${g.color}"></span><b>第 ${gi+1} 组</b><span class="cnt">${g.items.length} 张</span></div>
+    <div class="group-b">
+      <div class="fldgrp"><label class="fld">分组命名（新文件名与打包名都会用到）</label>
+        <input type="text" value="${esc(g.name)}" onchange="GROUPS[${gi}].name=this.value;refreshAll()"></div>
+      <div class="pz">📦 打包名：<b>${esc(zipName(gi))}.zip</b></div>
+      <div class="list">${rows}</div>
+    </div>`;
+    box.appendChild(d);
+  });
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function extOf(im){
+  const f=$('fmt').value;
+  if(f==='image/jpeg')return '.jpg';
+  if(f==='image/png')return '.png';
+  const m=im.name.match(/\.[a-z0-9]+$/i);
+  return m?m[0].toLowerCase():'.jpg';
+}
+function refreshAll(){renderGroups();renderGrid();}
+
+/* ============ 尺寸设置 UI ============ */
+let resizeMode='off';
+$('segResize').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  [...$('segResize').children].forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  resizeMode=b.dataset.v;
+  $('customRow').style.display=resMode()==='custom'?'flex':'none';
+  if(!['off','custom'].includes(resizeMode)){$('cw').value=resizeMode.split('x')[0];$('ch').value=resizeMode.split('x')[1];}
+  makeGroups(true);
+});
+function resMode(){return resizeMode==='custom'?'custom':resizeMode;}
+$('fmt').onchange=refreshAll;
+
+/* ============ 处理与打包 ============ */
+async function loadImage(file){
+  if(window.createImageBitmap){try{return await createImageBitmap(file);}catch(e){}}
+  return new Promise((res,rej)=>{const img=new Image();img.onload=()=>res(img);img.onerror=rej;img.src=URL.createObjectURL(file);});
+}
+async function resizeImage(im){
+  const mode=resMode();
+  if(mode==='off')return {blob:im.file,ext:null};
+  const W=+$('cw').value||1280,H=+$('ch').value||720;
+  const bmp=await loadImage(im);
+  const sw=bmp.width||bmp.naturalWidth,sh=bmp.height||bmp.naturalHeight;
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const ctx=c.getContext('2d');
+  const fit=$('fit').value;
+  if(fit==='stretch'){ctx.drawImage(bmp,0,0,W,H);}
+  else if(fit==='cover'){
+    const r=Math.max(W/sw,H/sh),dw=sw*r,dh=sh*r;
+    ctx.drawImage(bmp,(W-dw)/2,(H-dh)/2,dw,dh);
+  }else{
+    ctx.fillStyle=$('bgc').value;ctx.fillRect(0,0,W,H);
+    const r=Math.min(W/sw,H/sh),dw=sw*r,dh=sh*r;
+    ctx.drawImage(bmp,(W-dw)/2,(H-dh)/2,dw,dh);
+  }
+  let type=$('fmt').value;
+  if(type==='keep'){type=im.file.type||'image/jpeg';if(type==='image/webp')type='image/jpeg';}
+  const q=(+$('q').value||90)/100;
+  const blob=await new Promise(r=>c.toBlob(r,type==='image/png'?undefined:type,q));
+  return {blob,ext:type==='image/png'?'.png':'.jpg'};
+}
+function log(m){const l=$('log');l.innerHTML+=m+'<br>';l.scrollTop=l.scrollHeight;}
+
+async function exportAll(){
+  if(!IMGS.length){toast('请先上传图片');return;}
+  if(!GROUPS.length){toast('请先生成分组');return;}
+  const btn=$('goBtn');btn.disabled=true;
+  $('progressWrap').style.display='block';$('log').innerHTML='';
+  const total=IMGS.length;let done=0;
+  const cache={}; // 全局序号 -> blob (尺寸调整结果全局共用)
+  try{
+    for(let gi=0;gi<GROUPS.length;gi++){
+      const g=GROUPS[gi];
+      log(`▸ 第 ${gi+1} 组「${g.name}」处理中…`);
+      const zip=new JSZip();
+      const useSub=$('zsub').value==='yes';
+      const root=useSub?zip.folder(zipName(gi)):zip;
+      const used={};
+      for(let li=0;li<g.items.length;li++){
+        const idx=g.items[li];let item;
+        if(cache[idx]!==undefined)item=cache[idx];
+        else{item=await resizeImage(IMGS[idx]);cache[idx]=item;done++;$('pg').value=done/total*100;}
+        let fname=newFileName(gi,li)+(item.ext||extOf(IMGS[idx]));
+        // 防重名
+        let k=2;while(used[fname]){fname=fname.replace(/(\.[a-z0-9]+)?$/i,(m)=>`(${k++})${m}`);}
+        used[fname]=1;
+        root.file(fname,item.blob);
+      }
+      log(`　压缩生成 ${zipName(gi)}.zip …`);
+      const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
+        m=>{$('pg').value=Math.min(100,done/total*100+m.percent*0);});
+      saveBlob(content,zipName(gi)+'.zip');
+      log(`　✅ 已下载 ${zipName(gi)}.zip（${fmtSize(content.size)}）`);
+      await new Promise(r=>setTimeout(r,400)); // 避免浏览器拦截连续下载
+    }
+    toast('全部完成 🎉',3000);
+  }catch(err){console.error(err);log('❌ 出错：'+err.message);toast('处理出错：'+err.message,3000);}
+  btn.disabled=false;
+}
+function saveBlob(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+</script>
+</body>
+</html>
