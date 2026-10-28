@@ -6,7 +6,11 @@
 <meta name="theme-color" content="#f4f2ee">
 <title>Monian · PhotoTool</title>
 <meta name="description" content="图片批量分组打包工具：统一等比缩放 · 自定义不等量分组 · 自动重命名 · 按组 ZIP 打包。全部处理在浏览器本地完成，图片不会上传服务器。">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/img/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="assets/img/icon-512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Monian">
 <script src="jszip.min.js"></script>
 <style>
@@ -41,7 +45,14 @@ button,input,select{font-family:inherit;font-size:inherit;color:inherit}
 .main{max-width:880px;margin:0 auto;padding:14px 14px 0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   margin-bottom:10px;overflow:hidden;box-shadow:0 1px 2px rgba(28,25,20,.03)}
-.card-hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.card-hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);
+  cursor:pointer;user-select:none;-webkit-user-select:none;transition:background .15s}
+.card-hd:active{background:var(--bg-soft)}
+.card-hd .chev{margin-left:4px;flex:none;width:12px;height:12px;stroke:var(--dim-2);stroke-width:1.8;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .22s}
+.card.collapsed>.card-hd{border-bottom-color:transparent}
+.card.collapsed>.card-hd .chev{transform:rotate(-90deg)}
+.card.collapsed>.card-bd{display:none}
 .card-hd h2{font-size:14.5px;font-weight:600;letter-spacing:.02em}
 .card-bd{padding:14px 16px}
 .step{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--accent);
@@ -164,7 +175,7 @@ progress::-webkit-progress-val{background:var(--accent)}
 
 <!-- 01 上传 -->
 <section class="card">
-  <div class="card-hd"><span class="step">01</span><h2>选择图片</h2><span class="badge" id="fileBadge">0 张</span></div>
+  <div class="card-hd"><span class="step">01</span><h2>选择图片</h2><span class="badge" id="fileBadge">0 张</span><svg class="chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5"/></svg></div>
   <div class="card-bd">
     <div class="actions">
       <button class="btn btn-primary" onclick="pick('folder')">📁 选择文件夹</button>
@@ -188,7 +199,7 @@ progress::-webkit-progress-val{background:var(--accent)}
 
 <!-- 02 尺寸 -->
 <section class="card">
-  <div class="card-hd"><span class="step">02</span><h2>统一尺寸调整</h2><span class="badge" id="sizeBadge">不调整</span></div>
+  <div class="card-hd"><span class="step">02</span><h2>统一尺寸调整</h2><span class="badge" id="sizeBadge">不调整</span><svg class="chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5"/></svg></div>
   <div class="card-bd">
     <div class="seg" id="segResize">
       <button data-v="off" class="on">不调整</button>
@@ -215,7 +226,7 @@ progress::-webkit-progress-val{background:var(--accent)}
 
 <!-- 03 分组 -->
 <section class="card">
-  <div class="card-hd"><span class="step">03</span><h2>自定义分组</h2><span class="badge" id="groupBadge">未分组</span></div>
+  <div class="card-hd"><span class="step">03</span><h2>自定义分组</h2><span class="badge" id="groupBadge">未分组</span><svg class="chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5"/></svg></div>
   <div class="card-bd">
     <div class="row">
       <div class="fldgrp" style="flex:3"><label class="fld">每组数量（逗号分隔，可不等量）</label>
@@ -233,7 +244,7 @@ progress::-webkit-progress-val{background:var(--accent)}
 
 <!-- 04 重命名 -->
 <section class="card">
-  <div class="card-hd"><span class="step">04</span><h2>重命名规则</h2></div>
+  <div class="card-hd"><span class="step">04</span><h2>重命名规则</h2><svg class="chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5"/></svg></div>
   <div class="card-bd">
     <div class="fldgrp"><label class="fld">名称模板（各组自动预填组名，可随时修改）</label>
       <div style="display:flex;gap:8px">
@@ -256,7 +267,7 @@ progress::-webkit-progress-val{background:var(--accent)}
 
 <!-- 05 打包 -->
 <section class="card">
-  <div class="card-hd"><span class="step">05</span><h2>按组压缩打包下载</h2></div>
+  <div class="card-hd"><span class="step">05</span><h2>按组压缩打包下载</h2><svg class="chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5"/></svg></div>
   <div class="card-bd">
     <div class="row">
       <div class="fldgrp"><label class="fld">压缩格式</label>
@@ -292,6 +303,13 @@ progress::-webkit-progress-val{background:var(--accent)}
 <div class="toast" id="toast"></div>
 
 <script>
+/* ============ 卡片折叠（纯 UI 交互，不影响任何处理逻辑） ============ */
+document.querySelectorAll('.card>.card-hd').forEach(hd=>{
+  hd.addEventListener('click',e=>{
+    if(e.target.closest('input,select,button'))return;   // 头部内控件不触发折叠
+    hd.parentElement.classList.toggle('collapsed');
+  });
+});
 /* ============ 状态 ============ */
 let IMGS = [];   // {file,name,url}
 let GROUPS = []; // {name,color,items:[全局序号]}
