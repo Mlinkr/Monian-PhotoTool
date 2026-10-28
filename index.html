@@ -219,7 +219,7 @@ progress::-webkit-progress-val{background:var(--accent)}
   <div class="card-bd">
     <div class="row">
       <div class="fldgrp" style="flex:3"><label class="fld">每组数量（逗号分隔，可不等量）</label>
-        <input type="text" id="gsize" placeholder="如：9,8,11,12,11" value="9,8,11,12,11"></div>
+        <input type="text" id="gsize" placeholder="如：9,8,11,12,11（灰色示例，输入后即生效）"></div>
       <div class="fldgrp" style="flex:none"><button class="btn btn-primary" onclick="makeGroups()">生成分组</button></div>
     </div>
     <div class="actions" style="margin-top:2px">
@@ -237,7 +237,7 @@ progress::-webkit-progress-val{background:var(--accent)}
   <div class="card-bd">
     <div class="fldgrp"><label class="fld">名称模板（各组自动预填组名，可随时修改）</label>
       <div style="display:flex;gap:8px">
-        <input type="text" id="tpl" placeholder="如：【{日期}】张艺兴" oninput="onTpl()" style="flex:1">
+        <input type="text" id="tpl" placeholder="如：【{日期}】张艺兴（{日期}=当日日期）" oninput="onTpl()" style="flex:1">
         <button class="btn" type="button" onclick="insertDate()" style="flex:none;white-space:nowrap">📅 今日日期</button>
       </div></div>
     <div class="row">
@@ -463,7 +463,6 @@ function insertDate(){
   onTpl();
   toast('已插入 {日期}，实际名称中会显示为 '+todayStr());
 }
-window.addEventListener('DOMContentLoaded',()=>{if(!$('tpl').value.trim())$('tpl').value='{日期}';});
 function onTpl(){
   const v=$('tpl').value.trim();
   if(GROUPS.length){GROUPS.forEach(g=>g.name=v);renderGroups();}
@@ -506,26 +505,28 @@ async function toHeicBlob(file){
 }
 function decodeViaImg(file){
   return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file);
     const img=new Image();
-    img.onload=()=>res(img);
-    img.onerror=()=>rej(new Error('decode-fail'));
-    img.src=URL.createObjectURL(file);
+    img.onload=()=>{res(img);setTimeout(()=>URL.revokeObjectURL(url),2000);};
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('decode-fail'));};
+    img.src=url;
   });
 }
 async function loadImage(file){
   file=await toHeicBlob(file);
-  /* 路径1：createImageBitmap */
+  /* 路径1：createImageBitmap（用完即弃，由 GC 回收） */
   if(window.createImageBitmap){
     try{return await createImageBitmap(file);}catch(e){}
   }
-  /* 路径2：Image 元素，失败后延时重试一次（内存压力导致的瞬时失败） */
-  for(let attempt=0;attempt<2;attempt++){
+  /* 路径2：Image 元素 + 多次退避重试（iOS 内存压力导致的瞬时失败） */
+  const delays=[300,1200,2500];
+  for(let attempt=0;attempt<delays.length;attempt++){
     try{const img=await decodeViaImg(file);
       if(img.width||img.naturalWidth)return img;
     }catch(e){}
-    if(attempt===0)await new Promise(r=>setTimeout(r,600));
+    await new Promise(r=>setTimeout(r,delays[attempt]));
   }
-  throw new Error('无法解码图片「'+(file.name||'')+'」（可能内存不足或格式不支持），建议改用 JPG/PNG 或减少单次数量');
+  throw new Error('无法解码图片「'+(file.name||'')+'」（设备内存不足），建议关闭其他标签页后重试，或减少单次处理数量');
 }
 /* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
 async function resizeImage(im){
@@ -552,6 +553,7 @@ async function resizeImage(im){
       blob=new Blob([u8],{type:type==='image/png'?'image/png':'image/jpeg'});
     }catch(e){}
   }
+  c.width=0;c.height=0;   // 立即释放 canvas 显存（iOS 累积易爆内存）
   if(!blob)throw new Error('图片编码失败（设备内存不足），请减少单次处理数量或降低质量后重试');
   return {blob,ext:type==='image/png'?'.png':'.jpg'};
 }
