@@ -402,8 +402,7 @@ function displayNames(){
   return names.map(n=>{
     if(count[n]<=1)return n;
     seq[n]=(seq[n]||0)+1;
-    // 名称以数字结尾时序号用 - 连接，避免 20261028→202610281 的歧义
-    return /[0-9}]$/.test(n)?`${n}-${seq[n]}`:`${n}${seq[n]}`;   // 分组1 / 20261028-1
+    return `${n}${seq[n]}`;   // 分组1、分组2 …直接后缀
   });
 }
 
