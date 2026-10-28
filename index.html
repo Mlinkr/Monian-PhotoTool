@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f4f2ee">
+<title>Motion · PhotoTool</title>
+<meta name="description" content="图片批量分组打包工具：统一等比缩放 · 自定义不等量分组 · 自动重命名 · 按组 ZIP 打包。全部处理在浏览器本地完成，图片不会上传服务器。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Motion">
+<script src="jszip.min.js"></script>
+<style>
+:root{
+  --bg:#f4f2ee;--bg-soft:#f8f7f4;
+  --card:#ffffff;--card-2:#fbfaf8;
+  --line:rgba(28,25,20,.09);--line-2:rgba(28,25,20,.17);
+  --txt:#1f1c18;--dim:#6d675e;--dim-2:#9b948a;
+  --accent:#9a7434;--accent-2:#c39a4f;--accent-soft:rgba(154,116,52,.1);
+  --field:#ffffff;--danger:#c4554a;--ok:#5a7a4f;
+  --radius:14px;--rs:10px;
+  --shadow:0 1px 2px rgba(28,25,20,.04),0 6px 20px rgba(28,25,20,.05);
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--txt);font-size:14px;line-height:1.55;
+  font-family:-apple-system,"PingFang SC","Noto Serif SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;padding-bottom:calc(78px + var(--safe-b))}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+
+/* ---- 顶栏 ---- */
+.topbar{height:58px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px;border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.82);backdrop-filter:saturate(1.4) blur(10px);
+  position:sticky;top:0;z-index:30}
+.brand{display:flex;flex-direction:column;line-height:1.25}
+.brand strong{font-size:16px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:#211d18;text-indent:.24em}
+.brand span{font-size:10.5px;color:var(--dim-2);letter-spacing:.28em;margin-top:2px}
+.top-actions{display:flex;gap:8px}
+
+/* ---- 布局 ---- */
+.main{max-width:880px;margin:0 auto;padding:14px 14px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:10px;overflow:hidden;box-shadow:0 1px 2px rgba(28,25,20,.03)}
+.card-hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.card-hd h2{font-size:14.5px;font-weight:600;letter-spacing:.02em}
+.card-bd{padding:14px 16px}
+.step{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--accent);
+  border:1px solid rgba(154,116,52,.28);background:rgba(154,116,52,.05);
+  padding:2px 7px;border-radius:6px;letter-spacing:.1em;flex:none}
+.badge{margin-left:auto;font-size:11.5px;color:var(--dim);background:var(--bg-soft);
+  border:1px solid var(--line);border-radius:20px;padding:2px 10px;flex:none}
+.hint{font-size:12px;color:var(--dim-2);margin-top:8px;line-height:1.65}
+
+/* ---- 按钮 ---- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  border:1px solid var(--line-2);background:#fff;color:var(--txt);
+  border-radius:9px;padding:8px 14px;font-size:13px;cursor:pointer;transition:.18s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(170deg,#26221c,#14110d);border-color:#14110d;
+  color:#f7f1e6;font-weight:600;box-shadow:0 2px 8px rgba(20,17,13,.18)}
+.btn-ghost{background:transparent;box-shadow:none}
+.btn-ghost:hover{background:rgba(28,25,20,.04)}
+.btn-danger{color:var(--danger);border-color:rgba(196,85,74,.4)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn.full{width:100%}
+.btn.lg{padding:12px;font-size:14px;margin-top:10px}
+
+/* ---- 表单 ---- */
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row>*{flex:1;min-width:0}
+label.fld{display:block;font-size:12px;color:var(--dim);margin-bottom:5px;letter-spacing:.04em}
+.fldgrp{margin-bottom:10px;min-width:120px}
+input[type=text],input[type=number],select{width:100%;border:1px solid var(--line-2);
+  border-radius:9px;padding:9px 11px;font-size:13.5px;background:var(--field);outline:none;transition:.15s}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+/* ---- 上传 ---- */
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.dropzone{border:1.5px dashed rgba(154,116,52,.4);border-radius:var(--radius);
+  padding:26px 16px;text-align:center;color:var(--dim);background:var(--bg-soft);
+  cursor:pointer;transition:.2s;margin-top:12px}
+.dropzone.on{border-color:var(--accent);background:var(--accent-soft)}
+.dz-icon{width:30px;height:30px;color:var(--accent)}
+.dz-title{margin-top:6px;font-size:13.5px;color:var(--txt)}
+.dz-sub{margin-top:3px;font-size:12px;color:var(--dim-2)}
+.statline{display:flex;gap:12px;margin-top:12px;font-size:12.5px;color:var(--dim);flex-wrap:wrap;align-items:center}
+.statline b{color:var(--accent)}
+
+/* ---- 缩略图：固定高度，框内滚动 ---- */
+.grid-wrap{margin-top:10px;border:1px solid var(--line);border-radius:var(--rs);
+  background:var(--card-2);position:relative}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;
+  padding:10px;max-height:300px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+@media(min-width:768px){.grid{grid-template-columns:repeat(auto-fill,minmax(106px,1fr))}}
+.thumb{position:relative;border-radius:8px;overflow:hidden;background:#e8e5df;aspect-ratio:1;cursor:grab;user-select:none}
+.thumb img{width:100%;height:100%;object-fit:cover;pointer-events:none}
+.thumb .idx{position:absolute;top:3px;left:3px;background:rgba(28,25,20,.65);color:#f7f1e6;
+  font-size:10px;padding:1px 5px;border-radius:5px;font-family:ui-monospace,Menlo,monospace}
+.thumb .gtag{position:absolute;bottom:3px;right:3px;font-size:10px;padding:1px 5px;border-radius:5px;color:#fff}
+.thumb.dragging{opacity:.35}
+.thumb.over{outline:2px solid var(--accent)}
+.thumb .mv{position:absolute;bottom:3px;left:3px;display:flex;gap:2px}
+.thumb .mv button{border:none;background:rgba(28,25,20,.55);color:#fff;font-size:11px;width:20px;height:18px;border-radius:5px;cursor:pointer}
+
+/* ---- 分组卡片 ---- */
+.group{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;background:var(--card)}
+.group-h{background:var(--bg-soft);padding:10px 14px;display:flex;align-items:center;gap:9px}
+.group-h .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.group-h b{font-size:13.5px}
+.group-h .cnt{font-size:12px;color:var(--dim);margin-left:auto}
+.group-b{padding:13px 14px}
+.zname{font-size:12.5px;background:var(--accent-soft);border:1px solid rgba(154,116,52,.2);
+  border-radius:8px;padding:8px 10px;margin-top:2px;word-break:break-all;color:var(--txt)}
+.zname b{color:var(--accent)}
+.list{margin-top:10px;max-height:200px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;-webkit-overflow-scrolling:touch}
+.list div{display:flex;gap:8px;padding:6px 10px;font-size:12px;border-bottom:1px solid var(--line);align-items:center;background:#fff}
+.list div:last-child{border-bottom:none}
+.list .o{color:var(--dim-2);min-width:22px;font-family:ui-monospace,Menlo,monospace}
+.list .old{color:var(--dim-2);word-break:break-all}
+.list .n{color:var(--ok);font-weight:500;word-break:break-all;margin-left:auto;text-align:right}
+.seg{display:flex;background:var(--bg-soft);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+.seg button{flex:1;border:none;background:transparent;padding:8px 4px;border-radius:7px;font-size:12.5px;cursor:pointer;color:var(--dim)}
+.seg button.on{background:#fff;color:var(--accent);font-weight:600;box-shadow:0 1px 3px rgba(28,25,20,.08)}
+
+/* ---- 进度 ---- */
+#progressWrap{display:none;margin-top:12px}
+progress{width:100%;height:6px;-webkit-appearance:none;appearance:none;border-radius:4px;overflow:hidden}
+progress::-webkit-progress-bar{background:var(--bg-soft)}
+progress::-webkit-progress-val{background:var(--accent)}
+#log{font-size:11.5px;color:var(--dim);margin-top:8px;max-height:130px;overflow:auto;line-height:1.7;
+  font-family:ui-monospace,Menlo,monospace}
+
+/* ---- 底栏 ---- */
+.fabbar{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.9);
+  backdrop-filter:blur(10px);border-top:1px solid var(--line);
+  padding:10px 16px calc(10px + var(--safe-b));display:flex;gap:10px;z-index:60}
+.fabbar .btn{flex:1;padding:13px}
+
+.toast{position:fixed;top:12%;left:50%;transform:translateX(-50%);background:rgba(28,25,20,.88);
+  color:#f7f1e6;padding:10px 18px;border-radius:10px;font-size:13px;z-index:99;opacity:0;
+  transition:.25s;pointer-events:none;max-width:86%;text-align:center}
+.toast.show{opacity:1}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <strong>Motion</strong>
+    <span>PhotoTool · 批量分组打包</span>
+  </div>
+  <div class="top-actions">
+    <button class="btn btn-ghost" onclick="clearAll()">清空</button>
+  </div>
+</header>
+
+<main class="main">
+
+<!-- 01 上传 -->
+<section class="card">
+  <div class="card-hd"><span class="step">01</span><h2>选择图片</h2><span class="badge" id="fileBadge">0 张</span></div>
+  <div class="card-bd">
+    <div class="actions">
+      <button class="btn btn-primary" onclick="pick('folder')">📁 选择文件夹</button>
+      <button class="btn" onclick="pick('files')">🖼 选择图片</button>
+      <button class="btn btn-ghost" onclick="clearAll()">清空</button>
+    </div>
+    <div class="dropzone" id="dz">
+      <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l1.6 2H19.5A1.5 1.5 0 0 1 21 9.5v9A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5z"/><path d="M12 17v-5M9.5 14.2 12 11.7l2.5 2.5"/></svg>
+      <p class="dz-title">拖入图片 / 文件夹，或点击选择</p>
+      <p class="dz-sub">按文件名自动排序 · 支持 JPG / PNG / WebP 等</p>
+    </div>
+    <input type="file" id="inFiles" multiple accept="image/*" hidden>
+    <input type="file" id="inFolder" webkitdirectory hidden>
+    <div class="statline" id="stat"></div>
+    <div class="grid-wrap" id="gridWrap" hidden>
+      <div class="grid" id="grid"></div>
+    </div>
+    <p class="hint">💡 缩略图可拖拽或用 ◀ ▶ 手动微调顺序（按内容分组时先在这里排好序）。</p>
+  </div>
+</section>
+
+<!-- 02 尺寸 -->
+<section class="card">
+  <div class="card-hd"><span class="step">02</span><h2>统一尺寸调整</h2><span class="badge" id="sizeBadge">不调整</span></div>
+  <div class="card-bd">
+    <div class="seg" id="segResize">
+      <button data-v="off" class="on">不调整</button>
+      <button data-v="1280x720">1280×720</button>
+      <button data-v="960x540">960×540</button>
+      <button data-v="custom">自定义</button>
+    </div>
+    <div class="row" id="customRow" hidden style="margin-top:10px">
+      <div class="fldgrp"><label class="fld">宽 (px)</label><input type="number" id="cw" value="1280"></div>
+      <div class="fldgrp"><label class="fld">高 (px)</label><input type="number" id="ch" value="720"></div>
+    </div>
+    <div class="row" style="margin-top:2px">
+      <div class="fldgrp"><label class="fld">输出格式</label>
+        <select id="fmt" onchange="refreshAll()"><option value="keep">保持原格式</option><option value="image/jpeg">JPG</option><option value="image/png">PNG</option></select>
+      </div>
+      <div class="fldgrp"><label class="fld">JPG 质量</label><input type="number" id="q" value="90" min="30" max="100"></div>
+      <div class="fldgrp"><label class="fld">允许放大</label>
+        <select id="upscale"><option value="no">否（小于目标不放大）</option><option value="yes">是</option></select>
+      </div>
+    </div>
+    <p class="hint">等比缩放、保持原始比例：16:9 图缩放后正好是目标尺寸；偶尔的非 16:9 图会按比例适配框内，不裁切、不拉伸、不补边。</p>
+  </div>
+</section>
+
+<!-- 03 分组 -->
+<section class="card">
+  <div class="card-hd"><span class="step">03</span><h2>自定义分组</h2><span class="badge" id="groupBadge">未分组</span></div>
+  <div class="card-bd">
+    <div class="row">
+      <div class="fldgrp" style="flex:3"><label class="fld">每组数量（逗号分隔，可不等量）</label>
+        <input type="text" id="gsize" placeholder="如：9,8,11,12,11" value="9,8,11,12,11"></div>
+      <div class="fldgrp" style="flex:none"><button class="btn btn-primary" onclick="makeGroups()">生成分组</button></div>
+    </div>
+    <div class="actions" style="margin-top:2px">
+      <button class="btn" onclick="presetEven()">均分五组</button>
+      <button class="btn" onclick="presetOne()">整包一组</button>
+    </div>
+    <p class="hint">按数量依次切分已排序的图片。总和少于图片总数时，剩余图片自动并入最后一组。组名重复时才会自动加序号区分。</p>
+    <div id="groups" style="margin-top:12px"></div>
+  </div>
+</section>
+
+<!-- 04 重命名 -->
+<section class="card">
+  <div class="card-hd"><span class="step">04</span><h2>重命名规则</h2></div>
+  <div class="card-bd">
+    <div class="fldgrp"><label class="fld">名称模板（各组自动预填组名，可随时修改）</label>
+      <input type="text" id="tpl" placeholder="如：【20261028】张艺兴" oninput="onTpl()"></div>
+    <div class="row">
+      <div class="fldgrp"><label class="fld">序号起始</label><input type="number" id="start" value="1" oninput="refreshAll()"></div>
+      <div class="fldgrp"><label class="fld">序号位数（补0）</label><input type="number" id="pad" value="0" min="0" max="6" oninput="refreshAll()"></div>
+      <div class="fldgrp"><label class="fld">序号范围</label>
+        <select id="scope" onchange="refreshAll()"><option value="group">仅分组内排序</option><option value="global">所有图片连续排序</option></select>
+      </div>
+      <div class="fldgrp"><label class="fld">连接符</label>
+        <select id="sep" onchange="refreshAll()"><option value="-">-</option><option value="_">_</option><option value="">无</option></select>
+      </div>
+    </div>
+    <p class="hint">新文件名 = 名称模板 + 连接符 + 序号。例：【20261028】张艺兴-1</p>
+  </div>
+</section>
+
+<!-- 05 打包 -->
+<section class="card">
+  <div class="card-hd"><span class="step">05</span><h2>按组压缩打包下载</h2></div>
+  <div class="card-bd">
+    <div class="row">
+      <div class="fldgrp"><label class="fld">压缩格式</label>
+        <select id="zfmt"><option value="zip">ZIP（通用）</option></select>
+      </div>
+      <div class="fldgrp"><label class="fld">包内结构</label>
+        <select id="zsub"><option value="yes">同名文件夹套图片</option><option value="no">图片直接放根目录</option></select>
+      </div>
+    </div>
+    <p class="hint">打包名 = 组名 + 起始序号-结束序号 + P，例：【20261028】张艺兴1-9P.zip。RAR 为专有格式浏览器无法生成，ZIP 全设备通用，效果等同。</p>
+    <div id="progressWrap">
+      <progress id="pg" value="0" max="100"></progress>
+      <div id="log"></div>
+    </div>
+    <button class="btn btn-primary full lg" id="goBtn" onclick="exportAll()">🚀 一键处理并打包下载全部分组</button>
+  </div>
+</section>
+
+</main>
+
+<div class="fabbar"><button class="btn btn-primary full" onclick="exportAll()">🚀 一键处理打包</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 状态 ============ */
+let IMGS = [];   // {file,name,url}
+let GROUPS = []; // {name,color,items:[全局序号]}
+const GCOLORS=['#9a7434','#5a7a4f','#4f6d8f','#8f4f63','#6b5b95','#3f7a72','#a0632f','#55524c'];
+const $=id=>document.getElementById(id);
+const IMG_RE=/\.(jpe?g|png|gif|bmp|webp|heic|heif|avif)$/i;
+
+function toast(m,t=2000){const el=$('toast');el.textContent=m;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),t);}
+
+/* ============ 上传 ============ */
+function pick(w){(w==='folder'?$('inFolder'):$('inFiles')).click();}
+$('inFiles').onchange=e=>{addFiles(e.target.files);e.target.value='';};
+$('inFolder').onchange=e=>{addFiles(e.target.files);e.target.value='';};
+const dz=$('dz');
+dz.onclick=()=>$('inFiles').click();
+['dragover','dragenter'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('on');}));
+document.addEventListener('dragleave',e=>{if(e.relatedTarget===null)dz.classList.remove('on');});
+document.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('on');
+  if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
+
+function addFiles(list){
+  const arr=[...list].filter(f=>f.type.startsWith('image/')||IMG_RE.test(f.name));
+  if(!arr.length){toast('未找到图片文件');return;}
+  arr.forEach(f=>IMGS.push({file:f,name:f.name}));
+  sortByName();rebuild();
+  toast(`已添加 ${arr.length} 张图片`);
+}
+function sortByName(){IMGS.sort((a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true}));}
+function clearAll(){IMGS=[];GROUPS=[];rebuild();}
+function totalSize(){return IMGS.reduce((s,i)=>s+i.file.size,0);}
+function fmtSize(b){return b>1048576?(b/1048576).toFixed(1)+'MB':(b/1024|0)+'KB';}
+
+function rebuild(){
+  GROUPS.forEach(g=>g.items=[]);
+  renderStat();renderGrid();makeGroups(true);
+}
+function renderStat(){
+  $('fileBadge').textContent=IMGS.length+' 张';
+  $('dz').hidden=IMGS.length>0;          // 有图后隐藏拖拽框
+  $('gridWrap').hidden=IMGS.length===0;
+  $('stat').innerHTML=IMGS.length?`共 <b>${IMGS.length}</b> 张 · 合计 <b>${fmtSize(totalSize())}</b> · 按名称排序`:'';
+}
+
+/* ============ 缩略图 ============ */
+function renderGrid(){
+  const g=$('grid');g.innerHTML='';
+  IMGS.forEach((im,i)=>{
+    if(!im.url)im.url=URL.createObjectURL(im.file);
+    const gm=groupOf(i);
+    const d=document.createElement('div');d.className='thumb';d.draggable=true;
+    d.innerHTML=`<img src="${im.url}" loading="lazy"><span class="idx">${i+1}</span>`+
+      (gm?`<span class="gtag" style="background:${gm.color}">${gm.tag}</span>`:'')+
+      `<span class="mv"><button onclick="event.stopPropagation();moveImg(${i},-1)">◀</button><button onclick="event.stopPropagation();moveImg(${i},1)">▶</button></span>`;
+    d.ondragstart=e=>{d.classList.add('dragging');e.dataTransfer.setData('text/plain',i);};
+    d.ondragend=()=>d.classList.remove('dragging');
+    d.ondragover=e=>{e.preventDefault();d.classList.add('over');};
+    d.ondragleave=()=>d.classList.remove('over');
+    d.ondrop=e=>{e.preventDefault();e.stopPropagation();d.classList.remove('over');
+      const from=+e.dataTransfer.getData('text/plain');if(from!==i){const[it]=IMGS.splice(from,1);IMGS.splice(i,0,it);rebuild();}};
+    g.appendChild(d);
+  });
+}
+function moveImg(i,dir){const j=i+dir;if(j<0||j>=IMGS.length)return;[IMGS[i],IMGS[j]]=[IMGS[j],IMGS[i]];rebuild();}
+function groupOf(idx){
+  for(let gi=0;gi<GROUPS.length;gi++)if(GROUPS[gi].items.includes(idx))return {...GROUPS[gi],tag:gi+1};
+  return null;
+}
+
+/* ============ 分组 ============ */
+function makeGroups(silent){
+  const sizes=$('gsize').value.split(/[,，、\s]+/).map(Number).filter(n=>n>0);
+  const total=IMGS.length;
+  if(!sizes.length||!total){GROUPS=[];renderGroups();renderGrid();updateBadges();return;}
+  GROUPS=[];let p=0;
+  const base=$('tpl').value.trim();
+  sizes.forEach((n,i)=>{
+    if(p>=total)return;
+    const take=Math.min(n,total-p);
+    const g={items:[]};for(let k=0;k<take;k++)g.items.push(p++);
+    g.color=GCOLORS[i%GCOLORS.length];
+    g.name=base||`分组${i+1}`;   // 不自动加序号
+    GROUPS.push(g);
+  });
+  if(p<total&&GROUPS.length){for(;p<total;p++)GROUPS[GROUPS.length-1].items.push(p);}
+  renderGroups();renderGrid();updateBadges();
+  if(!silent)toast(`已分成 ${GROUPS.length} 组`);
+}
+function presetEven(){if(!IMGS.length){toast('请先上传图片');return;}let per=Math.ceil(IMGS.length/5);$('gsize').value=Array(5).fill(per).join(',');makeGroups();}
+function presetOne(){if(!IMGS.length){toast('请先上传图片');return;}$('gsize').value=String(IMGS.length);makeGroups();}
+function updateBadges(){
+  $('groupBadge').textContent=GROUPS.length?`${GROUPS.length} 组`:'未分组';
+}
+
+/* ============ 组名去重：仅重复时加序号 ============ */
+function displayNames(){
+  const names=GROUPS.map(g=>(g.name||'').trim()||'未命名');
+  const count={};names.forEach(n=>count[n]=(count[n]||0)+1);
+  const seq={};
+  return names.map(n=>{
+    if(count[n]<=1)return n;
+    seq[n]=(seq[n]||0)+1;
+    return seq[n]===1?n:`${n}${seq[n]}`;   // 婚礼、婚礼2、婚礼3 …
+  });
+}
+
+/* ============ 命名 ============ */
+function padNum(n,pad){let s=String(n);while(s.length<pad)s='0'+s;return s;}
+function newFileName(gi,li){
+  const g=GROUPS[gi];
+  const tpl=displayNames()[gi];
+  const start=+$('start').value||1;
+  const scope=$('scope').value,sep=$('sep').value,pad=+$('pad').value||0;
+  const num=scope==='group'?start+li:start+g.items[li];
+  return sep?`${tpl}${sep}${padNum(num,pad)}`:`${tpl}${padNum(num,pad)}`;
+}
+function zipName(gi){
+  const g=GROUPS[gi],name=displayNames()[gi];
+  const start=+$('start').value||1;
+  let s,e;
+  if($('scope').value==='group'){s=start;e=start+g.items.length-1;}
+  else{s=start+g.items[0];e=start+g.items[g.items.length-1];}
+  return `${name}${s}-${e}P`;
+}
+
+/* ============ 渲染分组 ============ */
+function renderGroups(){
+  const box=$('groups');box.innerHTML='';
+  if(!GROUPS.length){box.innerHTML='<p class="hint">尚未生成分组：先在上方输入每组数量，点击「生成分组」。</p>';return;}
+  const names=displayNames();
+  GROUPS.forEach((g,gi)=>{
+    const d=document.createElement('div');d.className='group';
+    let rows='';
+    g.items.forEach((idx,li)=>{
+      rows+=`<div><span class="o">${li+1}.</span><span class="old">${esc(IMGS[idx].name)}</span><span class="n">→ ${esc(newFileName(gi,li))}${extOf(IMGS[idx])}</span></div>`;
+    });
+    const dupTag=names[gi]!==g.name.trim()&&g.name.trim()?`（重名已加序号）`:'';
+    d.innerHTML=`
+    <div class="group-h"><span class="dot" style="background:${g.color}"></span><b>第 ${gi+1} 组</b>${dupTag?`<span style="font-size:11px;color:var(--dim-2)">${dupTag}</span>`:''}<span class="cnt">${g.items.length} 张</span></div>
+    <div class="group-b">
+      <div class="fldgrp"><label class="fld">分组命名</label>
+        <input type="text" value="${esc(g.name)}" onchange="GROUPS[${gi}].name=this.value;refreshAll()"></div>
+      <div class="zname">📦 打包名：<b>${esc(zipName(gi))}.zip</b></div>
+      <div class="list">${rows}</div>
+    </div>`;
+    box.appendChild(d);
+  });
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function extOf(im){
+  const f=$('fmt').value;
+  if(f==='image/jpeg')return '.jpg';
+  if(f==='image/png')return '.png';
+  const m=im.name.match(/\.[a-z0-9]+$/i);
+  return m?m[0].toLowerCase():'.jpg';
+}
+function onTpl(){
+  const v=$('tpl').value.trim();
+  if(GROUPS.length){GROUPS.forEach(g=>g.name=v);renderGroups();}
+  renderGrid();
+}
+function refreshAll(){renderGroups();renderGrid();updateBadges();}
+
+/* ============ 尺寸设置 ============ */
+let resizeMode='off';
+$('segResize').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  [...$('segResize').children].forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  resizeMode=b.dataset.v;
+  const custom=resMode()==='custom';
+  $('customRow').hidden=!custom;
+  if(!['off','custom'].includes(resizeMode)){$('cw').value=resizeMode.split('x')[0];$('ch').value=resizeMode.split('x')[1];}
+  $('sizeBadge').textContent=resMode()==='off'?'不调整':`${$('cw').value}×${$('ch').value} 等比`;
+});
+function resMode(){return resizeMode;}
+
+/* ============ 处理与打包 ============ */
+async function loadImage(file){
+  if(window.createImageBitmap){try{return await createImageBitmap(file);}catch(e){}}
+  return new Promise((res,rej)=>{const img=new Image();img.onload=()=>res(img);img.onerror=rej;img.src=URL.createObjectURL(file);});
+}
+/* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
+async function resizeImage(im){
+  const mode=resMode();
+  if(mode==='off')return {blob:im.file,ext:null};
+  const W=+$('cw').value||1280,H=+$('ch').value||720;
+  const bmp=await loadImage(im);
+  const sw=bmp.width||bmp.naturalWidth,sh=bmp.height||bmp.naturalHeight;
+  let r=Math.min(W/sw,H/sh);
+  if(r>1&&$('upscale').value==='no')r=1;   // 小图不放大
+  const dw=Math.round(sw*r),dh=Math.round(sh*r);
+  const c=document.createElement('canvas');c.width=dw;c.height=dh;
+  c.getContext('2d').drawImage(bmp,0,0,dw,dh);
+  let type=$('fmt').value;
+  if(type==='keep'){type=im.file.type||'image/jpeg';if(type==='image/webp')type='image/jpeg';}
+  const q=(+$('q').value||90)/100;
+  const blob=await new Promise(r2=>c.toBlob(r2,type==='image/png'?undefined:type,q));
+  return {blob,ext:type==='image/png'?'.png':'.jpg'};
+}
+function log(m){const l=$('log');l.innerHTML+=m+'<br>';l.scrollTop=l.scrollHeight;}
+
+async function exportAll(){
+  if(!IMGS.length){toast('请先上传图片');return;}
+  if(!GROUPS.length){toast('请先生成分组');return;}
+  $('goBtn').disabled=true;
+  $('progressWrap').style.display='block';$('log').innerHTML='';
+  const total=IMGS.length;let done=0;
+  const cache={};
+  try{
+    for(let gi=0;gi<GROUPS.length;gi++){
+      const g=GROUPS[gi],names=displayNames();
+      log(`▸ 第 ${gi+1} 组「${names[gi]}」(${g.items.length} 张) 处理中…`);
+      const zip=new JSZip();
+      const root=$('zsub').value==='yes'?zip.folder(zipName(gi)):zip;
+      const used={};
+      for(let li=0;li<g.items.length;li++){
+        const idx=g.items[li];
+        if(cache[idx]===undefined){cache[idx]=await resizeImage(IMGS[idx]);done++;$('pg').value=done/total*100;}
+        const it=cache[idx];
+        let fname=newFileName(gi,li)+(it.ext||extOf(IMGS[idx]));
+        let k=2;while(used[fname])fname=fname.replace(/(\.[a-z0-9]+)?$/i,m=>`(${k++})${m}`);
+        used[fname]=1;
+        root.file(fname,it.blob);
+      }
+      log(`　压缩生成 ${zipName(gi)}.zip …`);
+      const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+      saveBlob(content,zipName(gi)+'.zip');
+      log(`　✅ 已下载 ${zipName(gi)}.zip（${fmtSize(content.size)}）`);
+      await new Promise(r=>setTimeout(r,400));
+    }
+    $('pg').value=100;
+    toast('全部完成 🎉',3000);
+  }catch(err){console.error(err);log('❌ 出错：'+err.message);toast('处理出错：'+err.message,3000);}
+  $('goBtn').disabled=false;
+}
+function saveBlob(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+</script>
+</body>
+</html>
