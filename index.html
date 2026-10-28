@@ -272,6 +272,10 @@ progress::-webkit-progress-val{background:var(--accent)}
         <select id="zsub"><option value="yes">同名文件夹套图片</option><option value="no">图片直接放根目录</option></select>
       </div>
     </div>
+    <p class="hint"><label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+      <input type="checkbox" id="keeporig" checked style="width:16px;height:16px;accent-color:var(--accent)">
+      个别图片无法缩放时，按原图直接打包（保证所有图片都在包里，推荐开启）
+    </label></p>
     <p class="hint">打包名 = 组名 + 序号范围 + P，例：【20261028】张艺兴1-9P.zip。默认「合并为一个压缩包」：所有分组打进同一个 ZIP（各组为包内独立文件夹），只需保存一次，iPhone/安卓/电脑都只弹一次下载。<br>RAR 为专有格式浏览器无法生成，ZIP 全设备通用，效果等同。</p>
     <div id="progressWrap">
       <progress id="pg" value="0" max="100"></progress>
@@ -535,7 +539,16 @@ async function loadImage(file){
     }catch(e){}
     await new Promise(r=>setTimeout(r,waits[attempt]));
   }
-  throw new Error('无法解码图片「'+(file.name||'')+'」，已重试5轮仍失败。请彻底关闭浏览器所有标签页后重新打开本页再试一次（释放系统内存）');
+  /* 路径4：强制按 HEIC 解码（有些 iPhone 图片实际是 HEIC 数据却挂着 .jpeg 扩展名） */
+  try{
+    await ensureHeicLib();
+    const out=await heic2any({blob:file,toType:'image/jpeg',quality:0.92});
+    const hc=Array.isArray(out)?out[0]:out;
+    if(window.createImageBitmap){try{const b=await createImageBitmap(hc);return b;}catch(e){}}
+    const img=await decodeViaImg(hc);
+    if(img.width||img.naturalWidth)return img;
+  }catch(e){}
+  throw new Error('undecodable');
 }
 /* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
 async function resizeImage(im){
@@ -581,8 +594,13 @@ async function buildGroupInto(zip,gi,cache,total,st){
     if(cache[idx]===undefined){
       try{cache[idx]=await resizeImage(IMGS[idx]);}
       catch(err){
-        if(err&&err.message==='skip'){st.skip++;log('　⚠️ 已跳过「'+IMGS[idx].name+'」（无法解码，不影响其他图片）');st.done++;continue;}
-        throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);
+        /* 解码彻底失败：按原图直接打包（原图直出），保证所有图片都在包里 */
+        if(err&&err.message==='undecodable'&&$('keeporig').checked){
+          cache[idx]={blob:IMGS[idx].file,ext:null};
+          st.orig++;log('　⚠️「'+IMGS[idx].name+'」无法缩放，已按原图打包');
+        }else{
+          throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);
+        }
       }
       st.done++;$('pg').value=st.done/st.total*90;   // 留10%给压缩
     }
@@ -599,7 +617,7 @@ async function exportAll(){
   if(!GROUPS.length){toast('请先生成分组');return;}
   $('goBtn').disabled=true;
   $('progressWrap').style.display='block';$('log').innerHTML='';
-  const st={done:0,total:IMGS.length,skip:0};
+  const st={done:0,total:IMGS.length,skip:0,orig:0};
   const cache={};
   try{
     if($('zmode').value==='merged'){
@@ -627,7 +645,7 @@ async function exportAll(){
       }
     }
     $('pg').value=100;
-    toast(st.skip?('完成，但有 '+st.skip+' 张无法解码已跳过 ⚠️'):'全部完成 🎉',st.skip?5000:3000);
+    toast(st.orig?('完成，其中 '+st.orig+' 张按原图打包（未能缩放）'):'全部完成 🎉',st.orig?5000:3000);
   }catch(err){
     console.error(err);
     const frame=err&&err.stack?err.stack.split('\n').find(l=>/@@|@|:/.test(l))||'':'';
