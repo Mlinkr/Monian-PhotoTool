@@ -272,10 +272,6 @@ progress::-webkit-progress-val{background:var(--accent)}
         <select id="zsub"><option value="yes">同名文件夹套图片</option><option value="no">图片直接放根目录</option></select>
       </div>
     </div>
-    <p class="hint"><label style="display:flex;align-items:center;gap:7px;cursor:pointer">
-      <input type="checkbox" id="keeporig" checked style="width:16px;height:16px;accent-color:var(--accent)">
-      个别图片无法缩放时，按原图直接打包（保证所有图片都在包里，推荐开启）
-    </label></p>
     <p class="hint">打包名 = 组名 + 序号范围 + P，例：【20261028】张艺兴1-9P.zip。默认「合并为一个压缩包」：所有分组打进同一个 ZIP（各组为包内独立文件夹），只需保存一次，iPhone/安卓/电脑都只弹一次下载。<br>RAR 为专有格式浏览器无法生成，ZIP 全设备通用，效果等同。</p>
     <div id="progressWrap">
       <progress id="pg" value="0" max="100"></progress>
@@ -500,6 +496,7 @@ function ensureHeicLib(){
   return heicLibP;
 }
 async function toHeicBlob(file){
+  if(file&&file.file&&!file.size)file=file.file;   // 容错：误传图片对象时取原始 File
   const isHeic=/heic|heif/i.test(file.type||'')||/\.hei[cf]$/i.test(file.name||'');
   if(!isHeic)return file;
   await ensureHeicLib();
@@ -508,79 +505,81 @@ async function toHeicBlob(file){
   try{blob.name=(file.name||'photo').replace(/\.hei[cf]$/i,'')+'.jpg';}catch(e){}
   return blob;
 }
-function decodeViaImg(file){
+async function decodeViaImg(file,makeCopy){
+  /* makeCopy=true 时先把数据读成新 Blob，避免对已被 createImageBitmap 消费的原对象操作 */
+  let src=file;
+  if(makeCopy){
+    try{
+      if(typeof file.arrayBuffer==='function'){
+        const buf=await file.arrayBuffer();
+        src=new Blob([buf],{type:file.type||'image/jpeg'});
+      }
+    }catch(e){src=file;}
+  }
   return new Promise((res,rej)=>{
-    const url=URL.createObjectURL(file);
+    let url;
+    try{url=URL.createObjectURL(src);}catch(e){rej(e);return;}
     const img=new Image();
-    img.onload=()=>{res(img);setTimeout(()=>URL.revokeObjectURL(url),2000);};
-    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('decode-fail'));};
+    img.onload=()=>{res(img);setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},3000);};
+    img.onerror=()=>{try{URL.revokeObjectURL(url);}catch(e){};rej(new Error('decode-fail'));};
     img.src=url;
   });
 }
 async function loadImage(file){
   file=await toHeicBlob(file);
-  /* 路径1：createImageBitmap（用完即弃，由 GC 回收） */
+  /* 注意：createImageBitmap 成功后可能消费(detach)原始 Blob，
+     之后不能再对同一对象用 createObjectURL。因此每次失败都用"重新读取的副本"重试。 */
   if(window.createImageBitmap){
     try{return await createImageBitmap(file);}catch(e){}
   }
-  /* 路径2+3：Image 元素与新 Blob 交替重试，逐轮加长等待（iOS 内存压力属瞬时失败，等待即恢复） */
-  const waits=[400,1000,2000,4000,6000];
-  for(let attempt=0;attempt<waits.length;attempt++){
-    try{const img=await decodeViaImg(file);
-      if(img.width||img.naturalWidth)return img;
-    }catch(e){}
-    await new Promise(r=>setTimeout(r,waits[attempt]));
+  /* 备用：Image 元素解码，每次都基于一份新的副本，避免 Blob 已被消费 */
+  for(let i=0;i<3;i++){
     try{
-      const buf=await file.arrayBuffer();
-      const fresh=new Blob([buf],{type:file.type||'image/jpeg'});
-      if(window.createImageBitmap){try{return await createImageBitmap(fresh);}catch(e){}}
-      const img=await decodeViaImg(fresh);
-      if(img.width||img.naturalWidth)return img;
+      const img=await decodeViaImg(file,true);
+      if(img&&(img.width||img.naturalWidth))return img;
     }catch(e){}
-    await new Promise(r=>setTimeout(r,waits[attempt]));
+    if(i<2)await new Promise(r=>setTimeout(r,[500,1500][i]));
   }
-  /* 路径4：强制按 HEIC 解码（有些 iPhone 图片实际是 HEIC 数据却挂着 .jpeg 扩展名） */
-  try{
-    await ensureHeicLib();
-    const out=await heic2any({blob:file,toType:'image/jpeg',quality:0.92});
-    const hc=Array.isArray(out)?out[0]:out;
-    if(window.createImageBitmap){try{const b=await createImageBitmap(hc);return b;}catch(e){}}
-    const img=await decodeViaImg(hc);
-    if(img.width||img.naturalWidth)return img;
-  }catch(e){}
-  throw new Error('undecodable');
+  throw new Error('无法解码图片「'+(file.name||'')+'」，请尝试重新选择该图片或改用 JPG/PNG 格式');
 }
 /* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
 async function resizeImage(im){
   const mode=resMode();
   if(mode==='off')return {blob:im.file,ext:null};
   const W=+$('cw').value||1280,H=+$('ch').value||720;
-  const bmp=await loadImage(im);
-  const sw=bmp.width||bmp.naturalWidth,sh=bmp.height||bmp.naturalHeight;
-  /* 注意：bmp 在函数末尾统一 close 释放 */
-  let r=Math.min(W/sw,H/sh);
-  if(r>1&&$('upscale').value==='no')r=1;   // 小图不放大
-  const dw=Math.round(sw*r),dh=Math.round(sh*r);
-  const c=document.createElement('canvas');c.width=dw;c.height=dh;
-  c.getContext('2d').drawImage(bmp,0,0,dw,dh);
-  let type=$('fmt').value;
-  if(type==='keep'){type=im.file.type||'image/jpeg';if(!type.startsWith('image/')||type==='image/webp'||type==='image/gif')type='image/jpeg';}
-  const q=(+$('q').value||90)/100;
-  let blob=await new Promise(r2=>c.toBlob(r2,type==='image/png'?undefined:type,q));
-  if(!blob){
-    /* iOS Safari 内存紧张时 toBlob 可能返回 null，改用 toDataURL 兜底 */
-    try{
-      const durl=c.toDataURL(type==='image/png'?'image/png':'image/jpeg',q);
-      const bin=atob(durl.split(',')[1]);const u8=new Uint8Array(bin.length);
-      for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
-      blob=new Blob([u8],{type:type==='image/png'?'image/png':'image/jpeg'});
-    }catch(e){}
+  const bmp=await loadImage(im.file);
+  try{
+    const sw=bmp.width||bmp.naturalWidth,sh=bmp.height||bmp.naturalHeight;
+    let r=Math.min(W/sw,H/sh);
+    if(r>1&&$('upscale').value==='no')r=1;   // 小图不放大
+    const dw=Math.max(1,Math.round(sw*r)),dh=Math.max(1,Math.round(sh*r));
+    const c=document.createElement('canvas');
+    c.width=dw;c.height=dh;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,dw,dh);
+    ctx.drawImage(bmp,0,0,dw,dh);
+    let type=$('fmt').value;
+    if(type==='keep'){type=im.file.type||'image/jpeg';}
+    if(!/^image\/(jpeg|png|webp)$/.test(type))type='image/jpeg';
+    const q=(+$('q').value||90)/100;
+    /* 编码必须完成后再清理 canvas，否则内容被清空导致编码失败 */
+    let blob=await new Promise(res=>{
+      try{c.toBlob(b=>res(b),type,q);}catch(e){res(null);}
+    });
+    if(!blob){
+      try{
+        const durl=c.toDataURL(type,q);
+        const bin=atob(durl.split(',')[1]);
+        const u8=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+        blob=new Blob([u8],{type});
+      }catch(e){}
+    }
+    return {blob,ext:type==='image/png'?'.png':'.jpg'};
+  }finally{
+    /* 编码彻底结束后才释放（延迟一拍，确保浏览器内部已读取像素） */
+    setTimeout(()=>{try{bmp.close&&bmp.close();}catch(e){}},300);
   }
-  c.width=0;c.height=0;   // 立即释放 canvas 显存（iOS 累积易爆内存）
-  if(bmp&&typeof bmp.close==='function'){try{bmp.close();}catch(e){}}   // 关键：立即释放解码位图，批量处理不爆内存
-  await new Promise(r=>setTimeout(r,0));   // 让出主线程，给 GC 机会
-  if(!blob)throw new Error('图片编码失败（设备内存不足），请减少单次处理数量或降低质量后重试');
-  return {blob,ext:type==='image/png'?'.png':'.jpg'};
 }
 function log(m){const l=$('log');l.innerHTML+=m+'<br>';l.scrollTop=l.scrollHeight;}
 
@@ -594,13 +593,8 @@ async function buildGroupInto(zip,gi,cache,total,st){
     if(cache[idx]===undefined){
       try{cache[idx]=await resizeImage(IMGS[idx]);}
       catch(err){
-        /* 解码彻底失败：按原图直接打包（原图直出），保证所有图片都在包里 */
-        if(err&&err.message==='undecodable'&&$('keeporig').checked){
-          cache[idx]={blob:IMGS[idx].file,ext:null};
-          st.orig++;log('　⚠️「'+IMGS[idx].name+'」无法缩放，已按原图打包');
-        }else{
-          throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);
-        }
+        err.fileName=IMGS[idx].name;err.fileIdx=idx;
+        throw err;
       }
       st.done++;$('pg').value=st.done/st.total*90;   // 留10%给压缩
     }
@@ -645,13 +639,13 @@ async function exportAll(){
       }
     }
     $('pg').value=100;
-    toast(st.orig?('完成，其中 '+st.orig+' 张按原图打包（未能缩放）'):'全部完成 🎉',st.orig?5000:3000);
+    toast('全部 '+IMGS.length+' 张处理完成 🎉',3000);
   }catch(err){
     console.error(err);
-    const frame=err&&err.stack?err.stack.split('\n').find(l=>/@@|@|:/.test(l))||'':'';
-    const detail=((err&&err.message)||String(err))+(frame?'  @'+frame.trim():'');
-    log('❌ 出错['+(err&&err.constructor?err.constructor.name:'Unknown')+']：'+detail);
-    toast('处理出错：'+((err&&err.message)||String(err)),6000);
+    const msg=((err&&err.message)||String(err));
+    const where=err&&err.fileName?('（第 '+(err.fileIdx+1)+' 张 '+err.fileName+'）'):'';
+    log('❌ 处理失败'+where+'：'+msg);
+    toast('处理失败'+where+'：'+msg,7000);
   }
   $('goBtn').disabled=false;
 }
