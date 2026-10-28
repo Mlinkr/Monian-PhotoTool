@@ -115,7 +115,13 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 
 /* ---- 分组卡片 ---- */
 .group{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;background:var(--card)}
-.group-h{background:var(--bg-soft);padding:10px 14px;display:flex;align-items:center;gap:9px}
+.group-h{background:var(--bg-soft);padding:10px 14px;display:flex;align-items:center;gap:9px;
+  cursor:pointer;user-select:none;-webkit-user-select:none}
+.group-h .chev{margin-left:2px;flex:none;width:11px;height:11px;stroke:var(--dim-2);stroke-width:1.8;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .22s}
+.group.collapsed>.group-h{border-radius:0}
+.group.collapsed>.group-b{display:none}
+.group.collapsed>.group-h .chev{transform:rotate(-90deg)}
 .group-h .dot{width:10px;height:10px;border-radius:50%;flex:none}
 .group-h b{font-size:13.5px}
 .group-h .cnt{font-size:12px;color:var(--dim);margin-left:auto}
@@ -345,6 +351,12 @@ document.addEventListener('change',e=>{
   if(SET_IDS.includes(e.target.id))saveSettings();
   if(e.target.closest&&e.target.closest('#groups')&&e.target.type==='text')saveGroupNames();   // 分组命名修改即保存
 });
+/* 分组卡片折叠（事件委托，动态渲染均可响应） */
+document.addEventListener('click',e=>{
+  const hd=e.target.closest('.group-h');
+  if(!hd||e.target.closest('input,select,button'))return;
+  hd.parentElement.classList.toggle('collapsed');
+});
 /* ============ 状态 ============ */
 let IMGS = [];   // {file,name,url}
 let GROUPS = []; // {name,color,items:[全局序号]}
@@ -509,7 +521,7 @@ function renderGroups(){
     });
     const dupTag=names[gi]!==g.name.trim()&&g.name.trim()?`（重名已加序号）`:'';
     d.innerHTML=`
-    <div class="group-h"><span class="dot" style="background:${g.color}"></span><b>第 ${gi+1} 组</b>${dupTag?`<span style="font-size:11px;color:var(--dim-2)">${dupTag}</span>`:''}<span class="cnt">${g.items.length} 张</span></div>
+    <div class="group-h"><span class="dot" style="background:${g.color}"></span><b>第 ${gi+1} 组</b>${dupTag?`<span style="font-size:11px;color:var(--dim-2)">${dupTag}</span>`:''}<span class="cnt">${g.items.length} 张</span><svg class="chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5"/></svg></div>
     <div class="group-b">
       <div class="fldgrp"><label class="fld">分组命名（{日期} 会自动替换为今日，如 20261028）</label>
         <input type="text" value="${esc(g.name)}" onchange="GROUPS[${gi}].name=this.value;refreshAll()"></div>
