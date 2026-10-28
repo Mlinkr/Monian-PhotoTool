@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f4f2ee">
-<title>Motion · PhotoTool</title>
+<title>Monian · PhotoTool</title>
 <meta name="description" content="图片批量分组打包工具：统一等比缩放 · 自定义不等量分组 · 自动重命名 · 按组 ZIP 打包。全部处理在浏览器本地完成，图片不会上传服务器。">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Motion">
+<meta name="apple-mobile-web-app-title" content="Monian">
 <script src="jszip.min.js"></script>
 <style>
 :root{
@@ -136,6 +136,11 @@ progress::-webkit-progress-val{background:var(--accent)}
   padding:10px 16px calc(10px + var(--safe-b));display:flex;gap:10px;z-index:60}
 .fabbar .btn{flex:1;padding:13px}
 
+.foot{padding:18px 20px calc(22px + var(--safe-b));border-top:1px solid var(--line);
+  background:#f1eee9;text-align:center;margin-bottom:66px}
+.foot-brand{font-size:12px;color:var(--dim);letter-spacing:.06em;margin-bottom:6px}
+.foot-note{margin:0 auto;max-width:720px;font-size:11px;color:var(--dim-2);line-height:1.7;letter-spacing:.02em}
+
 .toast{position:fixed;top:12%;left:50%;transform:translateX(-50%);background:rgba(28,25,20,.88);
   color:#f7f1e6;padding:10px 18px;border-radius:10px;font-size:13px;z-index:99;opacity:0;
   transition:.25s;pointer-events:none;max-width:86%;text-align:center}
@@ -147,7 +152,7 @@ progress::-webkit-progress-val{background:var(--accent)}
 
 <header class="topbar">
   <div class="brand">
-    <strong>Motion</strong>
+    <strong>Monian</strong>
     <span>PhotoTool · 批量分组打包</span>
   </div>
   <div class="top-actions">
@@ -269,6 +274,11 @@ progress::-webkit-progress-val{background:var(--accent)}
 
 </main>
 
+<footer class="foot">
+  <div class="foot-brand">© 2026 Monian · PhotoTool</div>
+  <p class="foot-note">所有图片仅在当前浏览器内处理，关闭页面即清除，不会上传到任何服务器</p>
+</footer>
+
 <div class="fabbar"><button class="btn btn-primary full" onclick="exportAll()">🚀 一键处理打包</button></div>
 <div class="toast" id="toast"></div>
 
@@ -374,7 +384,7 @@ function displayNames(){
   return names.map(n=>{
     if(count[n]<=1)return n;
     seq[n]=(seq[n]||0)+1;
-    return seq[n]===1?n:`${n}${seq[n]}`;   // 婚礼、婚礼2、婚礼3 …
+    return `${n}${seq[n]}`;   // 分组1、分组2、分组3 …（重名时全部从1开始）
   });
 }
 
