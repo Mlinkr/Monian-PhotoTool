@@ -237,7 +237,7 @@ progress::-webkit-progress-val{background:var(--accent)}
   <div class="card-bd">
     <div class="fldgrp"><label class="fld">名称模板（各组自动预填组名，可随时修改）</label>
       <div style="display:flex;gap:8px">
-        <input type="text" id="tpl" placeholder="如：【{日期}】张艺兴（{日期}=当日日期）" oninput="onTpl()" style="flex:1">
+        <input type="text" id="tpl" value="{日期}" placeholder="如：【{日期}】张艺兴" oninput="onTpl()" style="flex:1">
         <button class="btn" type="button" onclick="insertDate()" style="flex:none;white-space:nowrap">📅 今日日期</button>
       </div></div>
     <div class="row">
@@ -463,6 +463,7 @@ function insertDate(){
   onTpl();
   toast('已插入 {日期}，实际名称中会显示为 '+todayStr());
 }
+window.addEventListener('DOMContentLoaded',()=>{if(!$('tpl').value.trim())$('tpl').value='{日期}';});
 function onTpl(){
   const v=$('tpl').value.trim();
   if(GROUPS.length){GROUPS.forEach(g=>g.name=v);renderGroups();}
