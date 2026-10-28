@@ -311,6 +311,40 @@ document.querySelectorAll('.card>.card-hd').forEach((hd,i)=>{
     hd.parentElement.classList.toggle('collapsed');
   });
 });
+/* ============ 设置记忆（localStorage，清空按钮会一并清除） ============ */
+const SET_KEY='monian-pt-settings-v1', NAME_KEY='monian-pt-names-v1';
+const SET_IDS=['cw','ch','fmt','q','upscale','gsize','tpl','start','pad','scope','sep','zmode','zsub'];
+function saveSettings(){
+  try{
+    const o={resizeMode:resMode()};
+    SET_IDS.forEach(id=>{const el=$(id);if(el)o[id]=el.value;});
+    localStorage.setItem(SET_KEY,JSON.stringify(o));
+  }catch(e){}
+}
+function saveGroupNames(){
+  try{localStorage.setItem(NAME_KEY,JSON.stringify(GROUPS.map(g=>g.name)));}catch(e){}
+}
+function restoreSettings(){
+  try{
+    const o=JSON.parse(localStorage.getItem(SET_KEY)||'null');
+    if(!o)return;
+    SET_IDS.forEach(id=>{const el=$(id);if(el&&o[id]!==undefined)el.value=o[id];});
+    if(o.resizeMode&&o.resizeMode!=='off'){
+      const b=document.querySelector('#segResize button[data-v="'+o.resizeMode+'"]');
+      if(b){[...$('segResize').children].forEach(x=>x.classList.remove('on'));b.classList.add('on');}
+      resizeMode=o.resizeMode;
+      $('customRow').hidden=resMode()!=='custom';
+      if(!['off','custom'].includes(resizeMode)){$('cw').value=o.resizeMode.split('x')[0];$('ch').value=o.resizeMode.split('x')[1];}
+      $('sizeBadge').textContent=resMode()==='off'?'不调整':$('cw').value+'×'+$('ch').value+' 等比';
+    }
+  }catch(e){}
+}
+document.addEventListener('DOMContentLoaded',restoreSettings);
+document.addEventListener('input',e=>{if(SET_IDS.includes(e.target.id))saveSettings();});
+document.addEventListener('change',e=>{
+  if(SET_IDS.includes(e.target.id))saveSettings();
+  if(e.target.closest&&e.target.closest('#groups')&&e.target.type==='text')saveGroupNames();   // 分组命名修改即保存
+});
 /* ============ 状态 ============ */
 let IMGS = [];   // {file,name,url}
 let GROUPS = []; // {name,color,items:[全局序号]}
@@ -341,7 +375,18 @@ function addFiles(list){
   toast(`已添加 ${arr.length} 张图片`);
 }
 function sortByName(){IMGS.sort((a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true}));}
-function clearAll(){IMGS=[];GROUPS=[];rebuild();}
+function clearAll(){
+  IMGS=[];GROUPS=[];
+  try{localStorage.removeItem(SET_KEY);localStorage.removeItem(NAME_KEY);}catch(e){}
+  rebuild();
+  $('cw').value=1280;$('ch').value=720;$('fmt').value='keep';$('q').value=90;$('upscale').value='no';
+  $('gsize').value='';$('tpl').value='';$('start').value=1;$('pad').value=0;$('scope').value='group';$('sep').value='-';
+  $('zmode').value='merged';$('zsub').value='yes';
+  resizeMode='off';
+  document.querySelectorAll('#segResize button').forEach(x=>x.classList.toggle('on',x.dataset.v==='off'));
+  $('customRow').hidden=true;$('sizeBadge').textContent='不调整';
+  toast('已清空图片与全部设置');
+}
 function totalSize(){return IMGS.reduce((s,i)=>s+i.file.size,0);}
 function fmtSize(b){return b>1048576?(b/1048576).toFixed(1)+'MB':(b/1024|0)+'KB';}
 
@@ -397,7 +442,13 @@ function makeGroups(silent){
     GROUPS.push(g);
   });
   if(p<total&&GROUPS.length){for(;p<total;p++)GROUPS[GROUPS.length-1].items.push(p);}
+  try{   // 延用上一次的各组命名（数量一致时）
+    const savedNames=JSON.parse(localStorage.getItem(NAME_KEY)||'null');
+    if(Array.isArray(savedNames)&&savedNames.length===GROUPS.length)
+      GROUPS.forEach((g,i)=>{if(savedNames[i])g.name=savedNames[i];});
+  }catch(e){}
   renderGroups();renderGrid();updateBadges();
+  saveGroupNames();
   if(!silent)toast(`已分成 ${GROUPS.length} 组`);
 }
 function presetEven(){if(!IMGS.length){toast('请先上传图片');return;}let per=Math.ceil(IMGS.length/5);$('gsize').value=Array(5).fill(per).join(',');makeGroups();}
