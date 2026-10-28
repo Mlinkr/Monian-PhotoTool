@@ -422,14 +422,8 @@ function allZipName(){
 }
 function zipName(gi){
   const g=GROUPS[gi],name=displayNames()[gi];
-  const start=+$('start').value||1;
-  let s,e;
-  if($('scope').value==='group'){s=start;e=start+g.items.length-1;}
-  else{s=start+g.items[0];e=start+g.items[g.items.length-1];}
-  // 名称以数字结尾时（重名自动编号或手改名带数字），拼接起始序号会产生歧义（分组1+1-2P→分组11-2P），改用 名称-张数P
-  if(/\d$/.test(name))
-    return `${name}-${g.items.length}P`;
-  return `${name}${s}-${e}P`;
+  /* 打包名 = 组名-张数P；组名重复时去重序号已在名称里（分组1、分组2），不重复时名称后不带数字 */
+  return `${name}-${g.items.length}P`;
 }
 
 /* ============ 渲染分组 ============ */
@@ -510,15 +504,28 @@ async function toHeicBlob(file){
   try{blob.name=(file.name||'photo').replace(/\.hei[cf]$/i,'')+'.jpg';}catch(e){}
   return blob;
 }
-async function loadImage(file){
-  file=await toHeicBlob(file);
-  if(window.createImageBitmap){try{return await createImageBitmap(file);}catch(e){}}
+function decodeViaImg(file){
   return new Promise((res,rej)=>{
     const img=new Image();
     img.onload=()=>res(img);
-    img.onerror=()=>rej(new Error('无法解码图片「'+(file.name||'')+'」，请改用 JPG/PNG/WebP 格式'));
+    img.onerror=()=>rej(new Error('decode-fail'));
     img.src=URL.createObjectURL(file);
   });
+}
+async function loadImage(file){
+  file=await toHeicBlob(file);
+  /* 路径1：createImageBitmap */
+  if(window.createImageBitmap){
+    try{return await createImageBitmap(file);}catch(e){}
+  }
+  /* 路径2：Image 元素，失败后延时重试一次（内存压力导致的瞬时失败） */
+  for(let attempt=0;attempt<2;attempt++){
+    try{const img=await decodeViaImg(file);
+      if(img.width||img.naturalWidth)return img;
+    }catch(e){}
+    if(attempt===0)await new Promise(r=>setTimeout(r,600));
+  }
+  throw new Error('无法解码图片「'+(file.name||'')+'」（可能内存不足或格式不支持），建议改用 JPG/PNG 或减少单次数量');
 }
 /* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
 async function resizeImage(im){
@@ -603,7 +610,8 @@ async function exportAll(){
     toast('全部完成 🎉',3000);
   }catch(err){
     console.error(err);
-    const detail=err&&err.stack?err.stack.split('\n').slice(0,2).join(' '):(err&&err.message)||String(err);
+    const frame=err&&err.stack?err.stack.split('\n').find(l=>/@@|@|:/.test(l))||'':'';
+    const detail=((err&&err.message)||String(err))+(frame?'  @'+frame.trim():'');
     log('❌ 出错['+(err&&err.constructor?err.constructor.name:'Unknown')+']：'+detail);
     toast('处理出错：'+((err&&err.message)||String(err)),6000);
   }
