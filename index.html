@@ -291,6 +291,8 @@ const $=id=>document.getElementById(id);
 const IMG_RE=/\.(jpe?g|png|gif|bmp|webp|heic|heif|avif)$/i;
 
 function toast(m,t=2000){const el=$('toast');el.textContent=m;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),t);}
+window.addEventListener('error',e=>{log('❌ '+(e.message||'未知错误'));});
+window.addEventListener('unhandledrejection',e=>{const r=e.reason;log('❌ '+(r&&r.message?r.message:r));});
 
 /* ============ 上传 ============ */
 function pick(w){(w==='folder'?$('inFolder'):$('inFiles')).click();}
@@ -363,7 +365,7 @@ function makeGroups(silent){
     const take=Math.min(n,total-p);
     const g={items:[]};for(let k=0;k<take;k++)g.items.push(p++);
     g.color=GCOLORS[i%GCOLORS.length];
-    g.name=base||`分组${i+1}`;   // 不自动加序号
+    g.name=base||`分组${i+1}`;   // 未填模板时自动命名为 分组1/分组2…
     GROUPS.push(g);
   });
   if(p<total&&GROUPS.length){for(;p<total;p++)GROUPS[GROUPS.length-1].items.push(p);}
@@ -404,6 +406,9 @@ function zipName(gi){
   let s,e;
   if($('scope').value==='group'){s=start;e=start+g.items.length-1;}
   else{s=start+g.items[0];e=start+g.items[g.items.length-1];}
+  // 名称以数字结尾时（重名自动编号或手改名带数字），拼接起始序号会产生歧义（分组1+1-2P→分组11-2P），改用 名称-张数P
+  if(/\d$/.test(name))
+    return `${name}-${g.items.length}P`;
   return `${name}${s}-${e}P`;
 }
 
@@ -459,9 +464,34 @@ $('segResize').addEventListener('click',e=>{
 function resMode(){return resizeMode;}
 
 /* ============ 处理与打包 ============ */
+let heicLibP=null;
+function ensureHeicLib(){
+  if(!heicLibP)heicLibP=new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+    sc.onload=()=>res();sc.onerror=()=>rej(new Error('HEIC 解码组件加载失败，请检查网络或改用 JPG/PNG 图片'));
+    document.head.appendChild(sc);
+  });
+  return heicLibP;
+}
+async function toHeicBlob(file){
+  const isHeic=/heic|heif/i.test(file.type||'')||/\.hei[cf]$/i.test(file.name||'');
+  if(!isHeic)return file;
+  await ensureHeicLib();
+  const out=await heic2any({blob:file,toType:'image/jpeg',quality:0.92});
+  const blob=Array.isArray(out)?out[0]:out;
+  try{blob.name=(file.name||'photo').replace(/\.hei[cf]$/i,'')+'.jpg';}catch(e){}
+  return blob;
+}
 async function loadImage(file){
+  file=await toHeicBlob(file);
   if(window.createImageBitmap){try{return await createImageBitmap(file);}catch(e){}}
-  return new Promise((res,rej)=>{const img=new Image();img.onload=()=>res(img);img.onerror=rej;img.src=URL.createObjectURL(file);});
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>res(img);
+    img.onerror=()=>rej(new Error('无法解码图片「'+(file.name||'')+'」，请改用 JPG/PNG/WebP 格式'));
+    img.src=URL.createObjectURL(file);
+  });
 }
 /* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
 async function resizeImage(im){
@@ -499,7 +529,11 @@ async function exportAll(){
       const used={};
       for(let li=0;li<g.items.length;li++){
         const idx=g.items[li];
-        if(cache[idx]===undefined){cache[idx]=await resizeImage(IMGS[idx]);done++;$('pg').value=done/total*100;}
+        if(cache[idx]===undefined){
+          try{cache[idx]=await resizeImage(IMGS[idx]);}
+          catch(err){throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);}
+          done++;$('pg').value=done/total*100;
+        }
         const it=cache[idx];
         let fname=newFileName(gi,li)+(it.ext||extOf(IMGS[idx]));
         let k=2;while(used[fname])fname=fname.replace(/(\.[a-z0-9]+)?$/i,m=>`(${k++})${m}`);
