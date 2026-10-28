@@ -259,11 +259,17 @@ progress::-webkit-progress-val{background:var(--accent)}
       <div class="fldgrp"><label class="fld">压缩格式</label>
         <select id="zfmt"><option value="zip">ZIP（通用）</option></select>
       </div>
+      <div class="fldgrp"><label class="fld">下载方式</label>
+        <select id="zmode" onchange="refreshAll()">
+          <option value="merged">合并为一个压缩包（推荐，只弹一次保存）</option>
+          <option value="each">每组单独下载</option>
+        </select>
+      </div>
       <div class="fldgrp"><label class="fld">包内结构</label>
         <select id="zsub"><option value="yes">同名文件夹套图片</option><option value="no">图片直接放根目录</option></select>
       </div>
     </div>
-    <p class="hint">打包名 = 组名 + 起始序号-结束序号 + P，例：【20261028】张艺兴1-9P.zip。RAR 为专有格式浏览器无法生成，ZIP 全设备通用，效果等同。</p>
+    <p class="hint">打包名 = 组名 + 序号范围 + P，例：【20261028】张艺兴1-9P.zip。默认「合并为一个压缩包」：所有分组打进同一个 ZIP（各组为包内独立文件夹），只需保存一次，iPhone/安卓/电脑都只弹一次下载。<br>RAR 为专有格式浏览器无法生成，ZIP 全设备通用，效果等同。</p>
     <div id="progressWrap">
       <progress id="pg" value="0" max="100"></progress>
       <div id="log"></div>
@@ -400,6 +406,10 @@ function newFileName(gi,li){
   const num=scope==='group'?start+li:start+g.items[li];
   return sep?`${tpl}${sep}${padNum(num,pad)}`:`${tpl}${padNum(num,pad)}`;
 }
+function allZipName(){
+  const n=(GROUPS[0].name||'').trim()||'Monian';
+  return `${n}-合集${GROUPS.length>1?('共'+GROUPS.length+'组'):''}.zip`;
+}
 function zipName(gi){
   const g=GROUPS[gi],name=displayNames()[gi];
   const start=+$('start').value||1;
@@ -429,7 +439,7 @@ function renderGroups(){
     <div class="group-b">
       <div class="fldgrp"><label class="fld">分组命名</label>
         <input type="text" value="${esc(g.name)}" onchange="GROUPS[${gi}].name=this.value;refreshAll()"></div>
-      <div class="zname">📦 打包名：<b>${esc(zipName(gi))}.zip</b></div>
+      <div class="zname">📦 打包名：<b>${esc($('zmode').value==='merged'?allZipName():zipName(gi)+'.zip')}</b>${$('zmode').value==='merged'?`<span style="color:var(--dim-2)">（总包内子文件夹：${esc(zipName(gi))}）</span>`:''}</div>
       <div class="list">${rows}</div>
     </div>`;
     box.appendChild(d);
@@ -513,42 +523,57 @@ async function resizeImage(im){
 }
 function log(m){const l=$('log');l.innerHTML+=m+'<br>';l.scrollTop=l.scrollHeight;}
 
+async function buildGroupInto(zip,gi,cache,total,st){
+  const g=GROUPS[gi],names=displayNames();
+  log(`▸ 第 ${gi+1} 组「${names[gi]}」(${g.items.length} 张) 处理中…`);
+  const root=$('zsub').value==='yes'?zip.folder(zipName(gi)):zip;
+  const used={};
+  for(let li=0;li<g.items.length;li++){
+    const idx=g.items[li];
+    if(cache[idx]===undefined){
+      try{cache[idx]=await resizeImage(IMGS[idx]);}
+      catch(err){throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);}
+      st.done++;$('pg').value=st.done/st.total*90;   // 留10%给压缩
+    }
+    const it=cache[idx];
+    let fname=newFileName(gi,li)+(it.ext||extOf(IMGS[idx]));
+    let k=2;while(used[fname])fname=fname.replace(/(\.[a-z0-9]+)?$/i,m=>`(${k++})${m}`);
+    used[fname]=1;
+    root.file(fname,it.blob);
+  }
+}
 async function exportAll(){
   if(!IMGS.length){toast('请先上传图片');return;}
   if(!GROUPS.length){toast('请先生成分组');return;}
   $('goBtn').disabled=true;
   $('progressWrap').style.display='block';$('log').innerHTML='';
-  const total=IMGS.length;let done=0;
+  const st={done:0,total:IMGS.length};
   const cache={};
   try{
-    for(let gi=0;gi<GROUPS.length;gi++){
-      const g=GROUPS[gi],names=displayNames();
-      log(`▸ 第 ${gi+1} 组「${names[gi]}」(${g.items.length} 张) 处理中…`);
+    if($('zmode').value==='merged'){
+      /* 合并模式：一个大包，各组为子文件夹，一次下载 */
       const zip=new JSZip();
-      const root=$('zsub').value==='yes'?zip.folder(zipName(gi)):zip;
-      const used={};
-      for(let li=0;li<g.items.length;li++){
-        const idx=g.items[li];
-        if(cache[idx]===undefined){
-          try{cache[idx]=await resizeImage(IMGS[idx]);}
-          catch(err){throw new Error('处理第 '+(idx+1)+' 张「'+IMGS[idx].name+'」失败：'+err.message);}
-          done++;$('pg').value=done/total*100;
-        }
-        const it=cache[idx];
-        let fname=newFileName(gi,li)+(it.ext||extOf(IMGS[idx]));
-        let k=2;while(used[fname])fname=fname.replace(/(\.[a-z0-9]+)?$/i,m=>`(${k++})${m}`);
-        used[fname]=1;
-        root.file(fname,it.blob);
+      for(let gi=0;gi<GROUPS.length;gi++)await buildGroupInto(zip,gi,cache,null,st);
+      log(`▸ 压缩生成总包 ${allZipName()} …`);
+      const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
+        m=>{$('pg').value=90+m.percent*0.1;});
+      saveBlob(content,allZipName());
+      log(`　✅ 已下载 ${allZipName()}（${fmtSize(content.size)}），各组在包内独立文件夹`);
+    }else{
+      /* 逐组模式 */
+      for(let gi=0;gi<GROUPS.length;gi++){
+        const zip=new JSZip();
+        await buildGroupInto(zip,gi,cache,null,st);
+        log(`　压缩生成 ${zipName(gi)}.zip …`);
+        const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+        saveBlob(content,zipName(gi)+'.zip');
+        log(`　✅ 已下载 ${zipName(gi)}.zip（${fmtSize(content.size)}）`);
+        await new Promise(r=>setTimeout(r,400));
       }
-      log(`　压缩生成 ${zipName(gi)}.zip …`);
-      const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-      saveBlob(content,zipName(gi)+'.zip');
-      log(`　✅ 已下载 ${zipName(gi)}.zip（${fmtSize(content.size)}）`);
-      await new Promise(r=>setTimeout(r,400));
     }
     $('pg').value=100;
     toast('全部完成 🎉',3000);
-  }catch(err){console.error(err);log('❌ 出错：'+err.message);toast('处理出错：'+err.message,3000);}
+  }catch(err){console.error(err);log('❌ 出错：'+err.message);toast('处理出错：'+err.message,5000);}
   $('goBtn').disabled=false;
 }
 function saveBlob(blob,name){
