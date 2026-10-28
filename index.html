@@ -519,23 +519,23 @@ async function loadImage(file){
   if(window.createImageBitmap){
     try{return await createImageBitmap(file);}catch(e){}
   }
-  /* 路径2：Image 元素 + 多次退避重试（iOS 内存压力导致的瞬时失败） */
-  const delays=[300,1200,2500];
-  for(let attempt=0;attempt<delays.length;attempt++){
+  /* 路径2+3：Image 元素与新 Blob 交替重试，逐轮加长等待（iOS 内存压力属瞬时失败，等待即恢复） */
+  const waits=[400,1000,2000,4000,6000];
+  for(let attempt=0;attempt<waits.length;attempt++){
     try{const img=await decodeViaImg(file);
       if(img.width||img.naturalWidth)return img;
     }catch(e){}
-    await new Promise(r=>setTimeout(r,delays[attempt]));
+    await new Promise(r=>setTimeout(r,waits[attempt]));
+    try{
+      const buf=await file.arrayBuffer();
+      const fresh=new Blob([buf],{type:file.type||'image/jpeg'});
+      if(window.createImageBitmap){try{return await createImageBitmap(fresh);}catch(e){}}
+      const img=await decodeViaImg(fresh);
+      if(img.width||img.naturalWidth)return img;
+    }catch(e){}
+    await new Promise(r=>setTimeout(r,waits[attempt]));
   }
-  /* 路径3：复制一份全新 Blob 再试（绕开 iOS 对文件句柄的异常缓存状态） */
-  try{
-    const buf=await file.arrayBuffer();
-    const fresh=new Blob([buf],{type:file.type||'image/jpeg'});
-    if(window.createImageBitmap){try{return await createImageBitmap(fresh);}catch(e){}}
-    const img=await decodeViaImg(fresh);
-    if(img.width||img.naturalWidth)return img;
-  }catch(e){}
-  throw new Error('skip');
+  throw new Error('无法解码图片「'+(file.name||'')+'」，已重试5轮仍失败。请彻底关闭浏览器所有标签页后重新打开本页再试一次（释放系统内存）');
 }
 /* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
 async function resizeImage(im){
@@ -544,6 +544,7 @@ async function resizeImage(im){
   const W=+$('cw').value||1280,H=+$('ch').value||720;
   const bmp=await loadImage(im);
   const sw=bmp.width||bmp.naturalWidth,sh=bmp.height||bmp.naturalHeight;
+  /* 注意：bmp 在函数末尾统一 close 释放 */
   let r=Math.min(W/sw,H/sh);
   if(r>1&&$('upscale').value==='no')r=1;   // 小图不放大
   const dw=Math.round(sw*r),dh=Math.round(sh*r);
@@ -563,6 +564,8 @@ async function resizeImage(im){
     }catch(e){}
   }
   c.width=0;c.height=0;   // 立即释放 canvas 显存（iOS 累积易爆内存）
+  if(bmp&&typeof bmp.close==='function'){try{bmp.close();}catch(e){}}   // 关键：立即释放解码位图，批量处理不爆内存
+  await new Promise(r=>setTimeout(r,0));   // 让出主线程，给 GC 机会
   if(!blob)throw new Error('图片编码失败（设备内存不足），请减少单次处理数量或降低质量后重试');
   return {blob,ext:type==='image/png'?'.png':'.jpg'};
 }
@@ -602,6 +605,7 @@ async function exportAll(){
     if($('zmode').value==='merged'){
       /* 合并模式：一个大包，各组为子文件夹，一次下载 */
       const zip=new JSZip();
+      if(IMGS.length>200)log('　💡 图片超过200张：合并大包较吃内存，若失败请改用「每组单独下载」模式');
       for(let gi=0;gi<GROUPS.length;gi++)await buildGroupInto(zip,gi,cache,null,st);
       log(`▸ 压缩生成总包 ${allZipName()} …`);
       const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
@@ -609,10 +613,12 @@ async function exportAll(){
       saveBlob(content,allZipName());
       log(`　✅ 已下载 ${allZipName()}（${fmtSize(content.size)}），各组在包内独立文件夹`);
     }else{
-      /* 逐组模式 */
+      /* 逐组模式：每组独立缓存，该组打包完成即释放，内存不随总数增长 */
       for(let gi=0;gi<GROUPS.length;gi++){
         const zip=new JSZip();
-        await buildGroupInto(zip,gi,cache,null,st);
+        const gCache={};
+        await buildGroupInto(zip,gi,gCache,null,st);
+        Object.keys(gCache).forEach(k=>delete gCache[k]);
         log(`　压缩生成 ${zipName(gi)}.zip …`);
         const content=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
         saveBlob(content,zipName(gi)+'.zip');
