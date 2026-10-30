@@ -187,11 +187,17 @@ progress::-webkit-progress-val{background:var(--accent)}
       <button class="btn btn-primary" onclick="pick('folder')">📁 选择文件夹</button>
       <button class="btn" onclick="pick('files')">🖼 选择图片</button>
       <button class="btn btn-ghost" onclick="clearAll()">清空</button>
+      <select id="sortSel" title="排序方式" style="margin-left:auto;max-width:150px;padding:8px 10px;border:1px solid #ddd8cf;border-radius:8px;background:#fff;font-size:13px;color:#4a453d">
+        <option value="name-asc">按名称 升序</option>
+        <option value="name-desc">按名称 降序</option>
+        <option value="date-asc">按日期 升序</option>
+        <option value="date-desc">按日期 降序</option>
+      </select>
     </div>
     <div class="dropzone" id="dz">
       <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l1.6 2H19.5A1.5 1.5 0 0 1 21 9.5v9A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5z"/><path d="M12 17v-5M9.5 14.2 12 11.7l2.5 2.5"/></svg>
       <p class="dz-title">拖入图片 / 文件夹，或点击选择</p>
-      <p class="dz-sub">按文件名自动排序 · 支持 JPG / PNG / WebP 等</p>
+      <p class="dz-sub">支持 JPG / PNG / WebP 等 · 可按名称或日期排序</p>
     </div>
     <input type="file" id="inFiles" multiple accept="image/*" hidden>
     <input type="file" id="inFolder" webkitdirectory hidden>
@@ -323,7 +329,7 @@ document.querySelectorAll('.card>.card-hd').forEach((hd,i)=>{
 });
 /* ============ 设置记忆（localStorage，清空按钮会一并清除） ============ */
 const SET_KEY='monian-pt-settings-v1', NAME_KEY='monian-pt-names-v1';
-const SET_IDS=['cw','ch','fmt','q','upscale','gsize','tpl','start','pad','scope','sep','zmode','zsub','znested'];
+const SET_IDS=['cw','ch','fmt','q','upscale','gsize','tpl','start','pad','scope','sep','zmode','zsub','znested','sortSel'];
 function saveSettings(){
   try{
     const o={resizeMode:resMode()};
@@ -386,18 +392,25 @@ document.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('on'
 function addFiles(list){
   const arr=[...list].filter(f=>f.type.startsWith('image/')||IMG_RE.test(f.name));
   if(!arr.length){toast('未找到图片文件');return;}
-  arr.forEach(f=>IMGS.push({file:f,name:f.name}));
-  sortByName();rebuild();
+  arr.forEach(f=>IMGS.push({file:f,name:f.name,last:f.lastModified||0}));
+  sortImgs();rebuild();
   toast(`已添加 ${arr.length} 张图片`);
 }
-function sortByName(){IMGS.sort((a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true}));}
+function sortImgs(){
+  const m=$('sortSel').value;
+  const byName=(a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true});
+  const byDate=(a,b)=>(a.last||0)-(b.last||0);
+  const cmp=m==='date-asc'?byDate:m==='date-desc'?(a,b)=>byDate(b,a):m==='name-desc'?(a,b)=>byName(b,a):byName;
+  IMGS.sort(cmp);
+}
+$('sortSel').addEventListener('change',()=>{if(!IMGS.length)return;sortImgs();rebuild();toast('已按'+$('sortSel').selectedOptions[0].text.replace('按','')+'重新排序');});
 function clearAll(){
   IMGS=[];GROUPS=[];
   try{localStorage.removeItem(SET_KEY);localStorage.removeItem(NAME_KEY);}catch(e){}
   rebuild();
   $('cw').value=1280;$('ch').value=720;$('fmt').value='keep';$('q').value=90;$('upscale').value='no';
   $('gsize').value='';$('tpl').value='';$('start').value=1;$('pad').value=0;$('scope').value='group';$('sep').value='-';
-  $('zmode').value='merged';$('zsub').value='yes';$('znested').checked=false;
+  $('zmode').value='merged';$('zsub').value='yes';$('znested').checked=false;$('sortSel').value='name-asc';
   resizeMode='off';
   document.querySelectorAll('#segResize button').forEach(x=>x.classList.toggle('on',x.dataset.v==='off'));
   $('customRow').hidden=true;$('sizeBadge').textContent='不调整';
@@ -414,7 +427,7 @@ function renderStat(){
   $('fileBadge').textContent=IMGS.length+' 张';
   $('dz').hidden=IMGS.length>0;          // 有图后隐藏拖拽框
   $('gridWrap').hidden=IMGS.length===0;
-  $('stat').innerHTML=IMGS.length?`共 <b>${IMGS.length}</b> 张 · 合计 <b>${fmtSize(totalSize())}</b> · 按名称排序`:'';
+  $('stat').innerHTML=IMGS.length?`共 <b>${IMGS.length}</b> 张 · 合计 <b>${fmtSize(totalSize())}</b> · ${$('sortSel').selectedOptions[0].text}`:'';
 }
 
 /* ============ 缩略图 ============ */
