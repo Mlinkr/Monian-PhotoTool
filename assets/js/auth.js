@@ -48,18 +48,18 @@
     el.id = 'authGate';
     el.innerHTML = `
       <style>
-        #authGate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+        #authGate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;font-family:"Monian Serif","Noto Serif SC","Source Han Serif SC","Songti SC",serif;
           background:linear-gradient(160deg,#eef3f7 0%,#e2ecf3 100%);}
         #authGate .card{width:min(360px,88vw);background:#fff;border-radius:14px;padding:34px 30px 26px;
           box-shadow:0 18px 50px rgba(29,26,21,.14);text-align:center;}
         #authGate h1{font-size:22px;letter-spacing:.35em;margin:0 0 4px;color:#1c2b36;font-weight:600;}
         #authGate .sub{font-size:12px;color:#8ba0ac;letter-spacing:.2em;margin-bottom:24px;}
-        #authGate input{width:100%;box-sizing:border-box;border:1px solid #cfdde6;border-radius:8px;
+        #authGate input{font-family:inherit;width:100%;box-sizing:border-box;border:1px solid #cfdde6;border-radius:8px;
           padding:11px 12px;font-size:14px;margin-bottom:12px;background:#f7fafc;color:#1c2b36;}
         #authGate input:focus{outline:none;border-color:#3d7ea6;}
         #authGate input[type=checkbox]{width:15px;height:15px;flex:0 0 15px;margin:0;padding:0;
           accent-color:#3d7ea6;border-radius:3px;}
-        #authGate button{width:100%;border:none;border-radius:8px;padding:12px;font-size:15px;
+        #authGate button{font-family:inherit;width:100%;border:none;border-radius:8px;padding:12px;font-size:15px;
           background:#3d7ea6;color:#fff;cursor:pointer;letter-spacing:.2em;}
         #authGate button:active{opacity:.85;}
         #authGate .row{display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;
