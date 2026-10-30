@@ -398,13 +398,21 @@ function addFiles(list){
   toast(`已添加 ${arr.length} 张图片`);
 }
 function sortImgs(){
-  const m=$('sortSel').value;
-  const byName=(a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true});
-  const byDate=(a,b)=>(a.last||0)-(b.last||0);
-  const cmp=m==='date-asc'?byDate:m==='date-desc'?(a,b)=>byDate(b,a):m==='name-desc'?(a,b)=>byName(b,a):byName;
+  const m=$('sortSel')?$('sortSel').value:'name-asc';
+  const name=(a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true})
+    ||a.name.localeCompare(b.name)
+    ||(a.last||0)-(b.last||0);
+  const date=(a,b)=>(a.last||0)-(b.last||0)||name(a,b);
+  const cmp=m==='date-asc'?date:m==='date-desc'?(a,b)=>date(b,a):m==='name-desc'?(a,b)=>name(b,a):name;
   IMGS.sort(cmp);
 }
-$('sortSel').addEventListener('change',()=>{if(!IMGS.length)return;sortImgs();rebuild();toast('已按'+$('sortSel').selectedOptions[0].text.replace('按','')+'重新排序');});
+/* 排序切换（事件委托，双事件保险） */
+['change','input'].forEach(ev=>document.addEventListener(ev,e=>{
+  if(!e.target||e.target.id!=='sortSel')return;
+  if(!IMGS.length)return;
+  sortImgs();rebuild();
+  try{toast('已按'+e.target.selectedOptions[0].text.replace('按','')+'重新排序');}catch(err){}
+}));
 function clearAll(){
   IMGS=[];GROUPS=[];
   try{localStorage.removeItem(SET_KEY);localStorage.removeItem(NAME_KEY);}catch(e){}
