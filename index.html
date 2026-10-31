@@ -654,7 +654,7 @@ async function loadImage(file){
   }
   throw new Error('无法解码图片「'+(file.name||'')+'」，请尝试重新选择该图片或改用 JPG/PNG 格式');
 }
-/* 强制尺寸：输出严格等于目标宽×高（不裁切；比例略有差异时等比铺满画布） */
+/* 强制尺寸 + 裁切铺满：输出严格等于目标宽×高，画面填满无白边、不变形 */
 async function resizeImage(im){
   const mode=resMode();
   if(mode==='off')return {blob:im.file,ext:null};
@@ -665,11 +665,11 @@ async function resizeImage(im){
     const c=document.createElement('canvas');
     c.width=W;c.height=H;               /* ★ 强制：画布就是目标尺寸，导出绝无 ±1px */
     const ctx=c.getContext('2d');
-    ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
-    /* 等比适配后铺到目标画布：比例一致时铺满；不一致时按短边适配（居中，不变形） */
-    const r=Math.min(W/sw,H/sh);
-    const noUp=$('upscale').value==='no'&&r>1;
-    const dw=noUp?sw:Math.round(sw*r),dh=noUp?sh:Math.round(sh*r);
+    ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);   /* 兜底黑底，正常不会有任何露出 */
+    /* 按长边适配 → 铺满整块画布，超出的部分居中裁掉（cover）。
+       注意：铺满画布优先于"不放大"，否则小图会贴不满而露边——这里始终保证铺满 */
+    const r=Math.max(W/sw,H/sh);
+    const dw=Math.max(1,Math.round(sw*r)),dh=Math.max(1,Math.round(sh*r));
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
     ctx.drawImage(bmp,(W-dw)/2,(H-dh)/2,dw,dh);
     let type=$('fmt').value;
