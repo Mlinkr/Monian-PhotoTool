@@ -654,7 +654,7 @@ async function loadImage(file){
   }
   throw new Error('无法解码图片「'+(file.name||'')+'」，请尝试重新选择该图片或改用 JPG/PNG 格式');
 }
-/* 等比缩放：保持原比例，适配目标框内，不裁切不拉伸不补边 */
+/* 强制尺寸：输出严格等于目标宽×高（不裁切；比例略有差异时等比铺满画布） */
 async function resizeImage(im){
   const mode=resMode();
   if(mode==='off')return {blob:im.file,ext:null};
@@ -662,14 +662,16 @@ async function resizeImage(im){
   const bmp=await loadImage(im.file);
   try{
     const sw=bmp.width||bmp.naturalWidth,sh=bmp.height||bmp.naturalHeight;
-    let r=Math.min(W/sw,H/sh);
-    if(r>1&&$('upscale').value==='no')r=1;   // 小图不放大
-    const dw=Math.max(1,Math.round(sw*r)),dh=Math.max(1,Math.round(sh*r));
     const c=document.createElement('canvas');
-    c.width=dw;c.height=dh;
+    c.width=W;c.height=H;               /* ★ 强制：画布就是目标尺寸，导出绝无 ±1px */
     const ctx=c.getContext('2d');
-    ctx.fillStyle='#fff';ctx.fillRect(0,0,dw,dh);
-    ctx.drawImage(bmp,0,0,dw,dh);
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+    /* 等比适配后铺到目标画布：比例一致时铺满；不一致时按短边适配（居中，不变形） */
+    const r=Math.min(W/sw,H/sh);
+    const noUp=$('upscale').value==='no'&&r>1;
+    const dw=noUp?sw:Math.round(sw*r),dh=noUp?sh:Math.round(sh*r);
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+    ctx.drawImage(bmp,(W-dw)/2,(H-dh)/2,dw,dh);
     let type=$('fmt').value;
     if(type==='keep'){type=im.file.type||'image/jpeg';}
     if(!/^image\/(jpeg|png|webp)$/.test(type))type='image/jpeg';
